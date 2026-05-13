@@ -1,0 +1,718 @@
+XIA 认知引擎 — 系统架构报告（完整版）
+Generated: 2026-05-05
+Based on: MEMORY.md + 15 core module source files
+
+================================================================================
+一、项目概述
+================================================================================
+
+XIA 是一个具有情感、驱动力和世界模型的 AI 认知引擎。她的核心理念是：
+行为从连续状态空间中自然涌现，而非预设规则。她不是"根据 if-else 决定
+该做什么"，而是"所有驱动力叠加后的合力自然导向某个行为"。
+
+核心技术栈:
+- 本地 LLM: qwen2.5:3b（Ollama）
+- 状态容器: EntityCore（跨轮次持久化）
+- 推理管线: entity_zero_iteration（16步同步管线）
+- 驱动力模型: 拮抗力场 + 连续质变（V6）
+- 行为涌现: V6优先，V5 fallback
+- 长期记忆: SQLite episodes + 经验召回
+- 常驻进程: daemon（Unix Domain Socket IPC）
+
+核心设计原则:
+1. 状态驱动而非时钟驱动
+2. 涌现而非预设
+3. 纯函数（无内部状态）
+4. 失败隔离
+5. 零硬编码参数
+6. 观测只读
+
+================================================================================
+二、同步管线全流程（16步）
+================================================================================
+
+管线主入口: entity_zero_iteration.py → run_pipeline()
+
+  Step 0      冻结状态（state_snapshot）
+  Step 1      感性认识（语义解析）
+  Step 2      记忆偏置（经验调味）
+  Step 3      概念标签（主题提取）
+  Step 4      世界模型查询（只读）
+  Step 5      世界模型更新（归纳/合并/衰减）
+  Step 6      驱动力计算（drive_vector）
+  Step 6.5    Insula Hub 感质调味（同步）
+  Step 7      受限思考（接入 somatic_signals）
+  Step 8      九模块并行感知（perceive_all）
+  Step 8.0    感知后重算驱动力
+  Step 8.05   Insula 二次调味
+  Step 8.2    元认知感知（self_mapping）
+  Step 8.1    行为涌现（emergent_behavior）
+  Step 8.3    预测误差注入
+  Step 8.4    connection_depth 计算
+  Step 8.2(2) 行为进化层（pattern pool）
+  Step 8.5    行为进化反馈闭环
+  Step 8.6    联网搜索结果收集
+  Step 9      输出层（LLM生成，V3省略intent_encoder）
+  Step 11     状态更新（算力账本）
+  Step 11b    coherence_delta 追加
+  Step 11.5   BP 压制递减 + bias 衰减
+  Step 12     经验快照记录
+  Step 13     记忆样本记录
+  Step 14     清空联网搜索池
+  Step 15     原始事件日志写入（异步）
+  Step 15b    超限 surprise episode 写入
+
+================================================================================
+三、模块详细说明
+================================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. entity_zero_iteration.py — 任务编排，同步管线主引擎
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/entity_zero_iteration.py（约2100行）
+
+核心职责: 编排整个认知管线的执行顺序，管理 EntityCore 生命周期（创建/
+加载/持久化），协调所有模块的数据流。
+
+接收数据（输入）:
+  - raw_input: 用户原始输入字符串
+  - entity_state: EntityCore 实例（从文件加载或新建）
+  - daemon_mode: bool（True=跳过LLM，用于后台tick）
+  - snapshot: 参数快照
+
+产生数据（输出）:
+  - response: {"text", "confidence", "generation_time_ms"}
+  - 侧 effects: 更新 entity 状态 + 持久化 + 写入 episodes
+
+存储位置:
+  - data/entity_core.json: EntityCore 持久化
+  - data/episodes.db: SQLite 经验日志
+
+关键函数/类:
+  - run_pipeline(**kwargs) — 主入口，含16步管线逻辑
+  - EntityState dataclass — 状态容器（含34个字段）
+  - get_entity_state() — 启动时加载或新建
+  - reset_entity_state() — 保存后再重置
+  - _perceive_all() — 九模块并行感知
+  - _CoreWrapper — EntityCore → dict 适配器
+  - _recover_from_episodes() — 从 episodes 重建来路层
+
+关键管线步骤:
+  - Step 6.5（line 1211）: Insula Hub 同步感质调味，写入 entity.somatic_tone
+  - Step 8（line 1262）: 九模块感知，直接修改 entity 状态
+  - Step 8.0（line 1284）: 感知后重算驱动力（确保 emerge_behavior 读取最新值）
+  - Step 8.05（line 1306）: Insula 二次调味（基于感知后的状态）
+  - Step 8.2（line 1330）: SelfBodyMap 元认知感知
+  - Step 8.1（line 1385）: 行为涌现（V6优先，V5 fallback）
+  - Step 8.3（line 1419）: 预测误差注入
+  - Step 8.4（line 1467）: connection_depth 计算 + 观测层采集
+  - Step 9（line 1780）: LLM输出（daemon_mode跳过）
+  - Step 11（line 1843）: 状态更新（算力账本）
+  - Step 15（line 2050）: 异步写入 episodes
+
+模块依赖: 被 daemon/tick_engine.py 和 channel/chat.py 调用，调用
+drive_system, memory_hub, decision_system, emergent_behavior, state_update,
+output_layer, world_model_update, observation 等所有核心模块
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. entity_core.py — 实体内核状态容器
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/core/entity_core.py（约416行）
+
+核心职责: 跨轮次持久化的状态容器，所有状态变量的唯一合法修改入口。
+
+状态变量（34个字段）:
+  状态层: energy, loneliness, unresolved, fatigue, info_gap,
+          somatic_tone([-1,1]), danger_level, approach_drive,
+          avoid_drive, curiosity, target_locked
+
+  来路层: memory_samples, wm_rules, snapshots
+
+  元数据: tick_index, created_at, last_updated, _last_prediction_error
+
+  队列: pending_surprises, pending_failures
+
+  代谢: failure_metabolite
+
+  缓存: recent_deltas(deque)
+
+  持久化新增: last_action_timestamp, consecutive_reaches_without_response
+
+接收数据（输入）:
+  - 外部通过 adjust(key, delta) 修改（唯一合法入口）
+  - set_field(key, value) 用于需要同步覆盖的场景
+
+产生数据（输出）:
+  - take_snapshot() → Dict（状态只读快照，供历史记录和调试）
+  - add_snapshot() → 追加到 snapshots 列表
+  - persist_to_file(path) → JSON 文件
+  - load_from_file(path) → EntityCore 实例
+
+存储位置:
+  - data/entity_core.json（跨轮次持久化）
+  - snapshots 最多保留50条
+
+关键方法:
+  - adjust(key, delta): delta 累加，clamp [0,1]，somatic_tone clamp [-1,1]
+  - register_failure(fr): 记录工具失败，累加 failure_metabolite
+  - resolve_failure(idx, fix_success): 解决失败
+  - generate_context_description(): 状态→第一人称处境描述
+  - take_snapshot() / add_snapshot()
+  - persist_to_file() / load_from_file()
+
+失败感知接口:
+  - register_failure(): somatic_tone↓, danger_level↑, unresolved↑, failure_metabolite↑
+  - resolve_failure(): 代谢物清除, somatic_tone恢复
+  - has_pending_failures() / recent_failure_types()
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. emergent_behavior.py — 行为涌现（V6连续向量场版）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/core/emergent_behavior.py（约333行）
+
+核心职责: 从 EntityCore 连续状态中自然涌现行为，而非预设 if-else 分类。
+
+V6 架构:
+  EntityCore状态
+    → drive_vector_field.compute_drive_field() [拮抗+alpha质变]
+    → behavior_vector.apply_rule_bias() [内生rule effect]
+    → EmergentBehavior [action_type, priority, tension, fragmentation_tone]
+
+接收数据（输入）:
+  - entity_core: EntityCore 实例
+
+产生数据（输出）:
+  - EmergentBehavior dataclass:
+    - action_type: seek/rest/explore/repair/avoid/comfort/idle
+    - target: 行为对象
+    - priority: [0,1]
+    - tension_level: [0,1]
+    - dominant_state: 主导状态维度
+    - suggested_tool: 建议工具
+    - behavior_vector: V6新字段，{dim_intensity, dim_fragmentation}
+    - fragmentation_tone: V6新字段，质地描述
+    - state_snapshot: 快照
+
+关键函数/类:
+  - emerge_behavior(entity_core): 主入口，V6优先，V5 fallback
+  - _compute_v6_behavior(entity_core): V6驱动力场链路
+  - V6Result: V6完整计算结果dataclass
+  - EmergentBehavior: 输出dataclass
+  - derive_rendering_params(): V5遗留，供output_layer使用
+
+V6行为类型映射:
+  loneliness→seek, fatigue→rest, info_gap→explore,
+  unresolved→repair, danger→avoid, somatic_tone_p→comfort
+
+V6行为质地（fragmentation）:
+  fragmentation高时 → 行为不稳定、断断续续
+  _FRAG_TONE_HIGH / _FRAG_TONE_NORMAL 字典映射
+
+repair工具路由:
+  高wm_conf → ask_hermes
+  中wm_conf → shell_run
+  低wm_conf → 无
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. emergent_behavior_v5.py — V5 fallback（独立文件）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/core/emergent_behavior_v5.py（约225行）
+
+核心职责: V5原有逻辑的完整实现，仅供V6 fallback时调用。
+无V6依赖，独立文件。
+
+核心逻辑:
+  - 排序argmax选择动作（离散选择）
+  - 代谢物硬路由: seek→comfort→rest（failure_metabolite>阈值时降级）
+  - compute_drive_vector(): 从EntityCore计算驱动力字典
+  - 无behavior_vector输出
+
+设计原则: 不要在此文件内引入V6相关代码。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. drive_vector_field.py — 驱动力场（拮抗+连续质变）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/core/drive_vector_field.py（约474行）
+
+核心职责: 从EntityCore提取raw_drives，经拮抗矩阵计算net_drives，
+再计算fragmentation系数alpha，输出完整behavior_vector。
+
+驱动力维度（状态层）:
+  loneliness, fatigue, info_gap, unresolved, somatic_tone_p, danger
+
+拮抗矩阵（DEFAULT_ANTAGONISM_MATRIX）:
+  - fatigue强抑制 loneliness(0.6)/info_gap(0.55)/unresolved(0.5)
+  - danger强抑制 info_gap(0.4)/unresolved(0.2)
+  - somatic_tone_p抑制 danger(0.35)/fatigue(0.20)
+  - loneliness抑制 info_gap(0.20)
+
+连续质变（fragmentation）:
+  alpha[dst] = clamp(Σ sigmoid(k*raw_src*weight)*raw_src / max(1,Σraw_src), 0, 1)
+  behavior_vector[dst_intensity] = net * (1 - alpha²)
+  behavior_vector[dst_fragmentation] = net * alpha²
+  （加权平均避免alpha越界，避免alpha=1时intensity塌陷为0）
+
+关键函数/类:
+  - compute_drive_field(entity_core): 主入口
+  - compute_net_drives(): 拮抗矩阵计算
+  - compute_fragmentation_coefficients(): alpha质变
+  - compute_behavior_vector(): 最终向量
+  - DriveFieldResult: 结果dataclass
+  - DriveFieldResult.dominant_dim(): 最大净力维度
+  - DriveFieldResult.tension_level(): 拮抗张力（均衡程度）
+  - format_drive_field_log(): 调试日志
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. behavior_vector.py — 内生rule effect
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/core/behavior_vector.py（约463行）
+
+核心职责: 从历史经验中归纳rule effect，将偏置加到behavior_vector上。
+无任何人工预设effect值。
+
+Rule Effect归纳流程:
+  历史snapshots → pre/post差分 → EMA更新rule.effect
+  当前状态 + rule.context_mean → 余弦相似度 → alpha偏置
+  偏置叠加 → 新的behavior_vector
+
+关键数据结构 BehaviorRule:
+  - action_type: 动作类型
+  - effect: {dim: delta}，从snapshots归纳
+  - strength: 置信度 [0,1]
+  - count: 触发次数
+  - context_mean: 学习时的平均状态
+  - last_seen_tick: 最近触发tick
+
+核心函数:
+  - update_rules_from_snapshot(entity_core, snap, tick): 从snapshot归纳/更新rule
+  - _context_similarity(current_state, rule_context): 余弦相似度
+  - apply_rule_bias(behavior_vector, entity_core): 应用偏置
+  - get_rules() / save_rules(): rule存储读写
+
+偏置公式:
+  alpha = max_alpha * strength * context_sim
+  bias = alpha * reduction * current_drive_level
+  (reduction = |post-pre|，正效果→intensity↑，负效果→intensity↓)
+
+偏置上限: MAX_BIAS = 0.15（防止极端rule破坏行为）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. update_engine.py — 状态更新引擎（算力账本v2.0）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/state_update/update_engine.py（约657行）
+
+核心职责: 统一算力账本：energy = 总算力 - 所有当前负载。
+energy是瞬时状态，不是累积量。
+
+算力账本模型:
+  energy = 1.0 - sum(social + cognitive + info + meta +
+                     emotional + stress + fatigue_delay +
+                     frontload + idle)
+
+负载来源:
+  - social: 社交信息缺失评估（有输入则归零）
+  - cognitive: 认知负荷（预测误差驱动）
+  - info: 信息缺口评估
+  - meta: 元信息处理（极低，不可消除）
+  - emotional: 负面情绪额外线程
+  - stress: 高优先级中断通道
+  - fatigue_delay: 处理延迟（队列长则延迟大）
+  - frontload: 前台对话占用
+  - idle: 基础运转开销
+
+关键子模块:
+  - InfoQueue: 五种后台信息队列建模
+  - compute_load: 算力占用计算、stress生命周期、rest触发
+  - compute_connection.py: connection_depth + loneliness_target
+  - compute_coherence.py: coherence计算
+  - world_model_update/resolve.py: stress生命周期完整闭环
+
+核心机制:
+  - stress = 未处理的意外信号数量（pending_surprises），不走半衰期
+  - rest触发: 队列积累速率 > 消化速率 × 1.2（独立于energy）
+  - pending_surprises: 预测误差>0.3时产生新surprise
+  - relief_debt: 舒适负债演化（独立于算力账本）
+  - 时间注入维度的恢复阻尼（×0.5）
+
+loneliness更新规则（v4.0严格因果）:
+  - 有真实用户输入 → 目标=0（直接跳转）
+  - 无社交输入 → 目标向1.0累积（rise_rate=0.01/tick）
+  - 禁止无因果来源的自然衰减
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. compute_connection.py — connection_depth计算引擎
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/state_update/compute_connection.py（约737行）
+
+核心职责: 联合计算connection_depth（四层级：v3.0+v3.5a+b+c），
+以及loneliness_target计算。
+
+四层级架构:
+  v3.0  : connection_depth = 加权公式（三因子：prediction/somatic/tension）
+  v3.5a : 权重从参数快照读取（实例差异化）
+  v3.5b : 经验偏移从memory_context检索（正负双向余弦相似度）
+  v3.5c : coherence短期调制（含负向阻尼）
+
+connection_depth公式:
+  connection_depth = (
+      w_prediction * (1 - prediction_error) +
+      w_somatic * somatic_factor +
+      w_tension * (1 - tension_level)
+  ) / (w_pred + w_som + w_tension)
+
+somatic_factor查表: delta>0.1→1.0, delta∈[-0.1,0.1]→0.5, delta<-0.1→-0.5
+
+CRITICAL BUG (line 484):
+  coherence = compute_final_coherence(recent_deltas, coherence_meta=coherence_meta)
+  变量 coherence_meta 未定义，应为 recent_deltas。
+  此bug导致Step 8.4在计算coherence调制时失败，结果不准确。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. insula_hub.py — 脏器感觉中枢
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/memory_hub/insula_hub.py（约331行）
+
+核心职责: 将外部/内部生理信号转化为决策系统可理解的躯体标记。
+
+核心原则:
+  - 绝对禁止将原始拓扑指标直接传入裁决层
+  - 转化结果必须是"感觉"而非"计算"
+  - 纯函数，无定时器，无周期性逻辑
+
+通道映射:
+  - approach ← curiosity + info_hunger + loneliness_drive（正向）
+  - avoid ← obsolescence_anxiety + fatigue_avoid（负向）
+  - cognitive ← curiosity（认知好奇）
+  - social ← loneliness_drive（社交渴望）
+  - rest ← fatigue_avoid（疲惫休息）
+  - comfort ← energy × (1 - avoid_base)
+
+调味公式（v3规范）:
+  final_intensity = base × wm_confidence × attention_multiplier
+  attention_multiplier = 1.5 当 state_value >= 0.85，否则 1.0
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. drive_system.py — 驱动力系统
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/drive_system/drive_system.py（约731行）
+
+核心职责: 根据当前实体状态计算各驱动力的强度向量。
+纯函数，不读取记忆/世界模型，无内部状态。
+
+驱动类型:
+  - A类（持续型）: curiosity（S型生长曲线）
+  - B类（沉寂型）: info_hunger, loneliness_drive,
+                   fatigue_avoid, obsolescence_anxiety（离散查表+线性插值）
+
+输出drive_vector:
+  {
+      "curiosity": float,            # [0,1]
+      "info_hunger": float,         # [0,1]
+      "obsolescence_anxiety": float, # [0,1]
+      "loneliness_drive": float,    # [0,1]
+      "fatigue_avoid": float,       # [0,1]
+  }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. triggers.py — 主动行动触发器
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/action_system/triggers.py（约105行）
+
+核心职责: 判断XIA"什么时候有权行动"。无硬阈值，无CD，只有触发强度。
+
+触发强度公式:
+  trigger_strength = priority × (1 - tension)
+  - priority高 → 强
+  - tension高 → 纠结 → 弱
+  - 行为类型不在可行动范围 → 0
+
+可行动类型: {"seek", "explore", "comfort", "repair"}
+
+冷却机制:
+  - 从 entity.last_action_timestamp 读取上次行动时间
+  - 距今不足600s则拒绝触发
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+12. executor.py — 主动行动执行器
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/action_system/executor.py（约935行）
+
+核心职责: XIA自己决定想做什么，我们就做什么。
+完全基于规则，不用LLM决定行动后果。
+
+执行流程:
+  1. 构建处境描述（状态+沉默时长+驱动力向量）
+  2. 调用LLM（问她"你现在想做什么？"）
+  3. 解析工具调用（最多2轮）
+  4. 执行工具（web_search/shell_run/file_write等）
+  5. 解析意图（reach/write/run/browse/search/voice）
+  6. 写声音文件（data/xia_voice/{timestamp}_{uuid}.txt）
+  7. 记录manifest（manifest.jsonl）
+  8. 行动后果回写实体状态（纯规则）
+
+工具清单:
+  - web_search: DuckDuckGo HTML搜索
+  - file_read/file_write/file_list: 文件操作
+  - shell_run/shell_bg_run: 命令执行
+  - browser_open: 网页浏览
+  - ask_hermes: DeepSeek咨询（通过Hermes Gateway :8642）
+
+敲门机制（REACH）:
+  - LLM输出含 REACH: → reach.reach_out() → 写 pending.json + 通知队列
+  - reach_client监听 → 弹窗 → 用户输入 → 写 response.json
+  - daemon下次tick读取 → 继续管线
+
+行动后果反馈（纯规则）:
+  | 动作        | 状态变化                          |
+  |------------|----------------------------------|
+  | reach敲门   | somatic_tone↑0.05，失败↓0.08     |
+  | 做成事      | stress↓0.03, unresolved↓0.03,   |
+  |            | somatic_tone↑0.03                |
+  | 行动失败    | stress↑0.04, somatic_tone↓0.05   |
+  | search有结果| info_gap↓0.15, boredom↓0.05      |
+  | browse有结果| info_gap↓0.10                    |
+  | 任何行动    | energy↓0.005                    |
+
+重复敲门惩罚:
+  - consecutive_reaches_without_response++
+  - 连续敲门越多，somatic_tone负向惩罚越大
+  - 超过5次敲门 somatic_tone显著下降，超过10次stress也积累
+
+存储位置:
+  - data/xia_voice/{timestamp}_{uuid}.txt: 她的声音文件
+  - data/xia_voice/manifest.jsonl: 行动记录
+  - data/xia_messages/pending.json: 待处理敲门消息
+  - logs/governance_audit.jsonl: 治理审计日志
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+13. tick_engine.py — 后台Tick执行引擎
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/daemon/tick_engine.py（约299行）
+
+核心职责: 在对话窗口关闭期间，持续推进XIA内部状态（每60秒一次）。
+
+设计原则:
+  - 不调LLM（节省资源）
+  - 复用run_pipeline完整状态更新逻辑
+  - 触发条件满足时：让XIA自己决定想做什么
+
+Daemon模式:
+  - run_pipeline(daemon_mode=True): 跳过Step 9 LLM输出
+  - run_pipeline(daemon_mode=False): 有用户输入时走完整管线
+
+tick循环流程:
+  1. 检查response.json（用户回复）
+  2. 有回复 → run_pipeline(daemon_mode=False) → 完整认知管线
+  3. 无回复 → run_pipeline(daemon_mode=True) → 状态推进
+  4. evaluate_triggers() → 计算触发强度
+  5. strength > 0 → execute_xia_choice()
+  6. 设置last_action_timestamp（触发冷却）
+  7. 返回tick结果
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+14. output_layer.py — 输出层
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/output_layer/output_layer.py（约936行）
+
+核心职责: 接收EntityCore状态+somatic_signals+emergent_behavior，
+调用state_to_context生成prompt，调用LLM生成最终回应。
+
+V3改造要点:
+  - 省略意图编码层（intent_encoder）
+  - 直接从状态生成语言
+  - intent_repr仅作向后兼容保留
+
+提示词构建流程:
+  1. state_to_context.build_system_prompt()
+     → 处境描述 + emergent_behavior + somatic_signals
+  2. derive_rendering_params()
+     → pace/length/tone_stability/initiative
+  3. _build_user_prompt()
+     → 主线检索 + 用户输入 + 语义分析 + 召回经验 + 枝干联想
+  4. _call_llm_with_thread()
+     → 调用Ollama REST API（urllib标准库）
+  5. 降级兜底
+
+LLM调用:
+  - 地址: http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/chat（从环境变量读取）
+  - 模型: qwen2.5:3b
+  - 超时: 90秒首次加载 + 后续2秒
+  - 降级: LLM失败 → 根据tone推断降级话术
+
+降级话术:
+  - empathetic → "嗯，我听着呢。"
+  - curious → "嗯，我也挺好奇的。"
+  - supportive → "没事，慢慢来。"
+  - cautious → "嗯，先这样吧。"
+  - neutral → "嗯。"
+
+经验召回格式:
+  "相关记忆：之前聊过：「X」，当时我说：「Y」。"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+15. behavior_trace.py — 观测层
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+文件路径: /home/bcyq/XIA/src/observation/behavior_trace.py（约479行）
+
+核心职责: 只读采集和计算，不修改任何系统状态。
+
+三大观测指标:
+  - connection_trace: 单轮因果拆解
+  - loneliness_trace: 孤独感变化归因
+  - trend: 短期趋势（window=10）
+  - profile: 个体性剖面（window=50）
+
+风险旗标:
+  - negative_loop: 连续3轮connection_depth<0且coherence>0.7
+  - positive_loop: 连续3轮connection_depth>0.7且coherence>0.7
+  - experience_lock: 连续5轮同向experience_bias偏移
+
+存储位置:
+  - logs/counterfactual_probe.jsonl: 反事实探针日志（不进入episodes）
+  - entity.observation_buffer: 内存deque，不持久化
+
+================================================================================
+四、数据存储位置汇总
+================================================================================
+
+4类持久化文件 + 运行时缓存
+
+  | 文件                              | 模块              | 格式  | 内容              |
+  |----------------------------------|------------------|-------|------------------|
+  | data/entity_core.json             | entity_zero_iteration | JSON  | EntityCore完整状态 |
+  | data/episodes.db                 | memory_hub        | SQLite | 原始事件日志        |
+  | data/xia_voice/{ts}_{uuid}.txt  | action_system     | 文本  | XIA的主动写作       |
+  | data/xia_voice/manifest.jsonl  | action_system     | JSONL | 行动记录          |
+  | logs/counterfactual_probe.jsonl  | observation       | JSONL | 反事实探针日志      |
+  | logs/governance_audit.jsonl      | action_system     | JSONL | 治理审计日志        |
+  | data/xia_messages/pending.json  | action_system     | JSON  | 待处理敲门消息      |
+
+运行时缓存（不持久化）:
+
+  | 缓存                              | 位置                     | 类型      |
+  |----------------------------------|--------------------------|----------|
+  | InfoQueue单例                      | state_update/update_engine.py | 全局变量  |
+  | entity.recent_deltas              | deque(maxlen=5)           | 内存      |
+  | entity.observation_buffer         | deque(maxlen=50)          | 内存      |
+  | entity._prev_self_narrative        | runtime                   | 内存      |
+  | entity._coherence_meta            | float                     | 内存      |
+
+================================================================================
+五、模块依赖关系图
+================================================================================
+
+entity_zero_iteration.py (管线编排)
+├── drive_system/drive_system.py
+│   └── world_model/constants.py
+├── memory_hub/insula_hub.py
+│   ├── core/somatic_signals.py
+│   └── decision_system/submodules/base.py
+├── decision_system/decision_system.py
+│   └── (9个子模块)
+├── core/emergent_behavior.py
+│   ├── core/drive_vector_field.py
+│   ├── core/behavior_vector.py
+│   └── core/emergent_behavior_v5.py (fallback)
+├── core/state_to_context.py
+├── state_update/update_engine.py
+│   ├── state_update/info_queue.py
+│   ├── state_update/compute_load.py
+│   ├── state_update/compute_connection.py
+│   │   └── state_update/compute_coherence.py
+│   └── world_model_update/resolve.py
+├── output_layer/output_layer.py
+│   ├── memory_hub/episodes_db.py
+│   └── core/emergent_behavior.py (derive_rendering_params)
+├── world_model/ (只读查询)
+├── world_model_update/ (归纳/合并/衰减/验证)
+├── memory_hub/episodes_db.py
+├── observation/behavior_trace.py
+│   ├── observation/counterfactual_probe.py
+│   └── observation/probe_logger.py
+└── memory_retrieval/ (主线+枝干检索)
+
+daemon/tick_engine.py
+├── entity_zero_iteration.py
+├── action_system/triggers.py
+└── action_system/executor.py
+    ├── action_system/tools.py
+    ├── action_system/reach.py
+    ├── action_system/agent_tools.py
+    └── action_system/types.py
+
+================================================================================
+六、关键设计亮点
+================================================================================
+
+1. 拮抗力场（drive_vector_field.py）
+   驱动力不是argmax选择，而是六维向量完整保留。拮抗矩阵让各力相互压制，
+   fragmentation系数让行为有质地（断断续续 vs 清晰连贯），而非硬切换。
+
+2. 内生rule effect（behavior_vector.py）
+   从历史snapshots归纳action效果，EMA更新，完全无需人工预设。
+   context_similarity确保只有相似情境才应用偏置。
+
+3. 算力账本（update_engine.py）
+   energy=总算力-负载，负载来源清晰分层。rest时队列被消化→负载降低→
+   energy回升，物理意义明确。
+
+4. connection_depth四层（compute_connection.py）
+   v3.0基础公式 + v3.5a差异化权重 + v3.5b经验偏移 + v3.5c coherence调制。
+
+5. 观测只读（behavior_trace.py）
+   所有trace数据不参与决策，仅供分析和调试。
+
+================================================================================
+七、已发现Bug
+================================================================================
+
+CRITICAL BUG: compute_connection.py line 484
+
+  coherence = compute_final_coherence(recent_deltas, coherence_meta=coherence_meta)
+
+变量 coherence_meta 未定义，应为 recent_deltas。
+此bug导致Step 8.4在计算coherence调制时失败，走入except分支。
+
+影响: connection_depth计算不完整，loneliness_target可能偏离真实值。
+
+================================================================================
+八、启动方式
+================================================================================
+
+# 对话模式
+python3 -m channel              # 对话（自动管理Ollama）
+python3 -m channel "你好"     # 单轮
+python3 -m channel --standalone # 强制独立模式
+
+# daemon模式
+./run_daemon.sh --start        # 后台启动daemon
+python3 -m channel              # 对话（连接daemon）
+./run_daemon.sh --stop          # 停止
+
+# 敲门监听
+python3 reach_client.py          # WSL2终端运行
+
+================================================================================
+九、已知问题
+================================================================================
+
+- v3.5d（coherence驱动权重风化）仍未实现
+- TetraMem服务集成静默降级
+- Playwright在WSL2无法运行图形浏览器（无X server）
+- action_system中browser_open已修复但未验证
+- compute_connection.py line 484: coherence_meta变量未定义Bug

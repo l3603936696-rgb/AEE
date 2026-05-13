@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  tetramem:
+    image: tetramem/tetramem:latest
+    container_name: tetramem
+    ports:
+      - "8100:8100"
+    environment:
+      # 核心原则：禁用 TetraMem 自带内分泌调节
+      # 所有生理调节必须走 insula_hub 和 endocrine_regulation
+      # 绝不允许外部黑盒篡改内部状态
+      TETRAMEM_DISABLE_REGULATION: "true"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

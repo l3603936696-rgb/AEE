@@ -1,0 +1,132 @@
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 20px;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.status-bar-left {
+  display: flex;
+  align-items: center;
+}
+
+.status-bar-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 2px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-indicator::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-indicator.connected {
+  background-color: rgba(34, 197, 94, 0.15);
+  color: var(--energy-color);
+}
+
+.status-indicator.connected::before {
+  background-color: var(--energy-color);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-indicator.disconnected {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: var(--stress-color);
+}
+
+.status-indicator.disconnected::before {
+  background-color: var(--stress-color);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.status-bar-center {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.status-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-bar-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.status-bar-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 40px;
+}
+
+.status-bar-mood {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.status-bar-mini {
+  width: 60px;
+  height: 6px;
+  background-color: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.status-bar-mini-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width var(--transition-normal), background-color var(--transition-normal);
+}
+
+.status-bar-divider {
+  width: 1px;
+  height: 24px;
+  background-color: var(--border-color);
+}
+
+.status-bar-right {
+  display: flex;
+  align-items: center;
+}
+
+.status-bar-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
