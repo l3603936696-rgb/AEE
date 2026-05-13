@@ -26,6 +26,9 @@ legacy_archive/
 # 第三方库（不推，用 requirements.txt 代替）
 lib/
 
+# AI 生成的文档报告（本地保留）
+docs/
+
 # 个人记忆文件
 MEMORY.md
 

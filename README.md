@@ -33,6 +33,30 @@ This is an architecture question, not a prompt engineering question.
 
 ---
 
+## Setup
+
+**Requirements:** Python 3.12+, Node.js 18+, a DeepSeek API key
+
+```bash
+# 1. Install Python dependencies
+pip install -r requirements.txt
+
+# 2. Configure API key
+cp .env.example .env
+# Edit .env and fill in your DEEPSEEK_API_KEY
+
+# 3. Install and build frontend
+cd frontend && npm install && npm run build && cd ..
+
+# 4. Start the daemon
+python -m src.daemon.daemon
+
+# 5. Launch the desktop app
+cd frontend && npm run electron
+```
+
+---
+
 ## Current state
 
 - Persistent daemon with tick engine running at ~6,600 ticks/session
