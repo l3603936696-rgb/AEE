@@ -43,6 +43,7 @@ class CycleStats:
     protected: int = 0
     promoted: int = 0
     demoted: int = 0
+    pruned: int = 0
 
 
 # ============================================================================
@@ -146,10 +147,12 @@ def run_update_cycle(
 
     # ---- Step 3: 衰减（必须用最新快照） ----
     # state_snapshot 已是最新快照，直接使用
+    # all_snaps 用于计算维度维护成本（奥卡姆剃刀动力学）
     decayed_rules = _decay.decay_rules(
         rules=merged_rules,
         state_snapshot=state_snapshot,
         param_snapshot=param_snapshot,
+        snapshots=all_snaps,
     )
 
     # 统计被保护的规律
@@ -198,6 +201,15 @@ def run_update_cycle(
     stats.promoted = promoted
     stats.demoted = demoted
     stats.verified = len(verified_rules)
+
+    # ---- Step 5: 种群上限 ----
+    max_rules = int(get_param(param_snapshot, "world_model_max_rules", 200))
+    if len(verified_rules) > max_rules:
+        # 按 confidence 排序，淘汰最低置信度的规律
+        verified_rules.sort(key=lambda r: r.confidence, reverse=True)
+        pruned = verified_rules[max_rules:]
+        verified_rules = verified_rules[:max_rules]
+        stats.pruned = len(pruned)
 
     return verified_rules, stats
 

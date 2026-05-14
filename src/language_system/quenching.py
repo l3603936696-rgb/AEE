@@ -44,6 +44,7 @@ class QuenchingRecord:
     quenching_efficiency: float
     timestamp: float
     tick: int = 0  # v11.3: 记录对应的 entity tick，供温跃层判断活跃度
+    template_idx: int = -1  # v11.6: 句子模板索引，-1 表示未使用模板
 
 
 class QuenchingTracker:
@@ -77,6 +78,7 @@ class QuenchingTracker:
         delta_unresolved_after: float,
         param_snapshot: Optional[Dict[str, Any]] = None,
         tick: int = 0,
+        template_idx: int = -1,
     ) -> float:
         """
         记录一次完整的消力闭环。
@@ -88,6 +90,7 @@ class QuenchingTracker:
             delta_unresolved_after : 执行后的 unresolved 值
             param_snapshot        : 参数快照（用于覆盖 history_maxlen）
             tick                  : 当前 entity tick（v11.3: 供温跃层判断活跃度）
+            template_idx          : 句子模板索引（v11.6: 供模板效率学习）
 
         返回：
             本次消力效率（before - after）
@@ -111,6 +114,7 @@ class QuenchingTracker:
             quenching_efficiency=efficiency,
             timestamp=time.time(),
             tick=tick,
+            template_idx=template_idx,
         )
         self._history.append(record)
 
@@ -164,6 +168,52 @@ class QuenchingTracker:
         """返回指定状态的所有历史记录。"""
         state_hash = self._hash_state(drive_state)
         return [r for r in self._history if r.drive_state_hash == state_hash]
+
+    # -------------------------------------------------------------------------
+    # 模板效率（v11.6: 供 compose_sentence 学习）
+    # -------------------------------------------------------------------------
+
+    def get_template_efficiency(self, recent_n: int = 200) -> Dict[int, float]:
+        """
+        返回最近 N 条记录中，每个 template_idx 的平均消力效率。
+
+        返回：
+            {template_idx: avg_efficiency} — 只包含 idx >= 0 的记录
+        """
+        sums: Dict[int, float] = {}
+        counts: Dict[int, int] = {}
+        for r in list(self._history)[-recent_n:]:
+            idx = r.template_idx
+            if idx < 0:
+                continue
+            sums[idx] = sums.get(idx, 0.0) + r.quenching_efficiency
+            counts[idx] = counts.get(idx, 0) + 1
+        return {
+            idx: sums[idx] / counts[idx]
+            for idx in sums
+            if counts[idx] > 0
+        }
+
+    def get_template_stats(self, recent_n: int = 200) -> Dict[int, Tuple[float, int]]:
+        """
+        返回最近 N 条记录中，每个 template_idx 的 (平均效率, 记录数)。
+
+        返回：
+            {template_idx: (avg_efficiency, count)} — 只包含 idx >= 0 的记录
+        """
+        sums: Dict[int, float] = {}
+        counts: Dict[int, int] = {}
+        for r in list(self._history)[-recent_n:]:
+            idx = r.template_idx
+            if idx < 0:
+                continue
+            sums[idx] = sums.get(idx, 0.0) + r.quenching_efficiency
+            counts[idx] = counts.get(idx, 0) + 1
+        return {
+            idx: (sums[idx] / counts[idx], counts[idx])
+            for idx in sums
+            if counts[idx] > 0
+        }
 
     # -------------------------------------------------------------------------
     # SNR（信噪比）
@@ -275,6 +325,7 @@ class QuenchingTracker:
                     "quenching_efficiency": r.quenching_efficiency,
                     "timestamp": r.timestamp,
                     "tick": r.tick,
+                    "template_idx": r.template_idx,
                 }
                 for r in self._history
             ],
@@ -293,6 +344,7 @@ class QuenchingTracker:
                 quenching_efficiency=float(rdata.get("quenching_efficiency", 0.0)),
                 timestamp=float(rdata.get("timestamp", 0.0)),
                 tick=int(rdata.get("tick", 0)),
+                template_idx=int(rdata.get("template_idx", -1)),
             )
             tracker._history.append(record)
             state_hash = record.drive_state_hash

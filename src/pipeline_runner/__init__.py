@@ -1,6 +1,7 @@
 """管线主函数 — run_pipeline + 所有管线步骤
 
 从 entity_zero_iteration.py 拆分。v11.5 恢复版。
+模块化拆分：utils / helpers / async_pipeline 已独立为子模块。
 """
 
 from __future__ import annotations
@@ -53,11 +54,10 @@ from typing import Any, Dict, List, Optional
 # 持久化路径
 # ============================================================================
 
-DATA_DIR = Path(__file__).parent.parent / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-ENTITY_CORE_PATH = DATA_DIR / "entity_core.json"
+# 常量从 helpers 模块导入
+from .helpers import DATA_DIR, ENTITY_CORE_PATH
 
-from .memory_hub import (
+from ..memory_hub import (
     ExperienceLog,
     StateSnapshot,
     log_experience_with_context,
@@ -67,84 +67,18 @@ from .memory_hub import (
     build_episode,
     write_episode_async,
 )
-from .memory_hub.insula_hub import compute_somatic_signals as _compute_somatic_signals
-from .core import emerge_behavior as _emerge_behavior, build_system_prompt as _build_system_prompt, derive_rendering_params as _derive_rendering_params
-from .core.action_dispatcher import dispatch_async_action as _dispatch_async_action, select_primitive_candidate as _select_primitive_candidate
-from .entity_state import EntityState, PipelineTrace, get_entity_state, force_set_state, ENTITY_CORE_PATH, DATA_DIR, _compute_prediction_error_map, _apply_silence_injection, _recover_from_episodes, _interpolate_lookup
-from .core.entity_core import EntityCore
+from ..memory_hub.insula_hub import compute_somatic_signals as _compute_somatic_signals
+from ..core import emerge_behavior as _emerge_behavior, build_system_prompt as _build_system_prompt, derive_rendering_params as _derive_rendering_params
+from ..core.action_dispatcher import dispatch_async_action as _dispatch_async_action, select_primitive_candidate as _select_primitive_candidate
+from ..entity_state import EntityState, PipelineTrace, get_entity_state, force_set_state, ENTITY_CORE_PATH, DATA_DIR, _compute_prediction_error_map, _apply_silence_injection, _recover_from_episodes, _interpolate_lookup
+from ..core.entity_core import EntityCore
 
 
-# ---- v11.2 逐字段预测误差计算 ----
-def _compute_prediction_error_map(entity: Any, pre_state: Dict[str, float]) -> Dict[str, float]:
-    """
-    计算逐字段预测误差 = actual_delta - predicted_delta。
-
-    在 Step 12 快照记录时调用，post_state 来自 entity.to_state_snapshot()，
-    prediction 来自 Step 8.3b 写入 entity._last_prediction。
-
-    返回 {field: error}，错误=0 的字段不包含在结果中（节省空间）。
-    """
-    try:
-        prediction = getattr(entity, "_last_prediction", {})
-        if not prediction:
-            return {}
-
-        post_state = entity.to_state_snapshot() if hasattr(entity, "to_state_snapshot") else {}
-        if not post_state:
-            return {}
-
-        error_map: Dict[str, float] = {}
-        for field, predicted in prediction.items():
-            pre_val = float(pre_state.get(field, 0.0))
-            post_val = float(post_state.get(field, pre_val))
-            actual = post_val - pre_val
-            error = round(actual - predicted, 5)
-            if abs(error) > 0.0001:  # 过滤纯零
-                error_map[field] = error
-
-        return error_map
-    except Exception:
-        return {}
+# helpers 模块导入（覆盖 entity_state 导入的同名函数）
+from .helpers import _compute_prediction_error_map, _build_experience_log, SnapshotDictWrapper
 
 
-def _build_experience_log(
-    output_text: Optional[str],
-    decision: Dict[str, Any],
-    semantic_packet_biased: Dict[str, Any],
-    concept_tags: List[Any],
-) -> ExperienceLog:
-    """
-    从管线输出构造 ExperienceLog（供异步经验沉淀使用）。
-
-    参数：
-        output_text          : 生成的回复文本
-        decision             : 裁决输出
-        semantic_packet_biased : 偏置后的语义包
-        concept_tags         : 概念标签列表
-
-    返回：
-        ExperienceLog : TetraMem 适配器所需的经验日志结构
-    """
-    content = output_text or ""
-    tags = [t.get("tag", "") for t in concept_tags if isinstance(t, dict)]
-    # 从决策添加标签
-    action = decision.get("action_type", "")
-    if action:
-        tags.append(f"action:{action}")
-    # 高情绪标记
-    emotion = semantic_packet_biased.get("emotion", 0.0)
-    if abs(emotion) > 0.5:
-        tags.append("high_emotion")
-    # 失败决策标记
-    if decision.get("was_override"):
-        tags.append("failed_decision")
-
-    weight = float(decision.get("priority", 0.5))
-    if abs(emotion) > 0.7:
-        weight *= 1.2
-
-    return ExperienceLog(content=content, tags=tags, weight=min(weight, 1.0))
-from .world_model_update import (
+from ..world_model_update import (
     run_update_cycle as _wmu_run_update_cycle,
     induct_only as _wmu_induct_only,
     decay_only as _wmu_decay_only,
@@ -152,48 +86,48 @@ from .world_model_update import (
     merge_only as _wmu_merge_only,
     CycleStats as _WMUCycleStats,
 )
-from .parameter_system.access import create_snapshot, get_param, apply_staged, stage_changes
-from .parameter_system.snapshot import ParameterSnapshot
+from ..parameter_system.access import create_snapshot, get_param, apply_staged, stage_changes
+from ..parameter_system.snapshot import ParameterSnapshot
 
-from .semantic.semantic_understanding import analyze_semantic
-from .memory_bias.memory_bias import apply_memory_bias
-from .concept_tags.concept_tags import generate_concept_tags
-from .world_model_reader.world_model_reader import query_world_model
-from .drive_system.drive_system import compute_drive_vector
-from .thinking_system.thinking_system import think as thinking_think
-from .decision_system.decision_system import perceive_all as _perceive_all, DEFAULT_PARAMS as DECISION_DEFAULT_PARAMS
-from .decision_system.submodules.web_search import (
+from ..semantic.semantic_understanding import analyze_semantic
+from ..memory_bias.memory_bias import apply_memory_bias
+from ..concept_tags.concept_tags import generate_concept_tags
+from ..world_model_reader.world_model_reader import query_world_model
+from ..drive_system.drive_system import compute_drive_vector
+from ..thinking_system.thinking_system import think as thinking_think
+from ..decision_system.decision_system import perceive_all as _perceive_all, DEFAULT_PARAMS as DECISION_DEFAULT_PARAMS
+from ..decision_system.submodules.web_search import (
     drain_pending_searches,
     clear_pending_searches,
 )
-from .intent_encoder.intent_encoder import encode_intent
-from .output_layer.output_layer import generate_response
-from .state_update.update_engine import update_state
-from .state_update.compute_connection import (
+from ..intent_encoder.intent_encoder import encode_intent
+from ..output_layer.output_layer import generate_response
+from ..state_update.update_engine import update_state
+from ..state_update.compute_connection import (
     compute_connection_depth,
     compute_connection_depth_ex,
     compute_loneliness_target,
     compute_loneliness_target_ex,
 )
-from .state_update.compute_coherence import append_delta as append_coherence_delta
-from .state_update import reset_info_queue
-from .observation.behavior_trace import (
+from ..state_update.compute_coherence import append_delta as append_coherence_delta
+from ..state_update import reset_info_queue
+from ..observation.behavior_trace import (
     build_connection_trace,
     build_loneliness_trace,
     compute_trend,
     compute_profile,
     _infer_loneliness_reason,
 )
-from .observation.counterfactual_probe import run_counterfactual_probe
-from .observation.probe_logger import get_probe_logger
-from .emotion_system import (
+from ..observation.counterfactual_probe import run_counterfactual_probe
+from ..observation.probe_logger import get_probe_logger
+from ..emotion_system import (
     ParticleField,
     ProjectionController,
     DecayEngine,
     InsightWriter,
     compute_emotions,
 )
-from .language_system import (
+from ..language_system import (
     QuenchingTracker,
     StrategyMap,
     ThermalController,
@@ -203,7 +137,7 @@ from .language_system import (
     CandidateGenerator,
     LinguisticAbundanceMonitor,
 )
-from .behavior_profiler import BehaviorProfiler
+from ..behavior_profiler import BehaviorProfiler
 
 
 logger = logging.getLogger(__name__)
@@ -304,20 +238,7 @@ def run_pipeline(
     # 从 ParameterSnapshot 提取常用参数域的 dict 表示
     # 语言/情绪系统需要的 keys 会被 get_param 按需解析
     # 这里提供一个 dict-like 包装，让 language_system 的 .get() 调用不崩溃
-    class _SnapshotDictWrapper(dict):
-        """将 ParameterSnapshot 包装为 dict 接口，透明转发给 get_param。"""
-        __slots__ = ("_snap",)
-        def __init__(self, snap: Any):
-            self._snap = snap
-        def get(self, key: str, default: Any = None) -> Any:
-            return get_param(self._snap, key, default)
-        def __getitem__(self, key: str) -> Any:
-            return get_param(self._snap, key, None)
-        def __contains__(self, key: str) -> bool:
-            return get_param(self._snap, key, _SENTINEL) is not _SENTINEL
-
-    _SENTINEL = object()
-    _snapshot_dict = _SnapshotDictWrapper(snapshot)
+    _snapshot_dict = SnapshotDictWrapper(snapshot)
     # ---- Step 0b: 记录 somatic_tone_start（供 Step 8.4 somatic_tone_delta 计算）----
     somatic_tone_start = float(getattr(entity, "somatic_tone", 0.0))
 
@@ -353,7 +274,7 @@ def run_pipeline(
     if _semantic_analyzer is None:
         # 优先尝试 BGE-small-zh-v1.5，不可用时降级到 LLM 启发式
         try:
-            from .language_system.bge_analyzer import SemanticAnalyzerV2
+            from ..language_system.bge_analyzer import SemanticAnalyzerV2
             _semantic_analyzer = SemanticAnalyzerV2()
             logger.info("[run_pipeline] Using BGE SemanticAnalyzerV2")
         except Exception:
@@ -375,7 +296,7 @@ def run_pipeline(
     # 播种：策略地图空时注入极端状态锚点词作为初始参照系
     if _strategy_map is not None and not _strategy_map._map:
         try:
-            from .language_system.seed_map import seed_strategy_map
+            from ..language_system.seed_map import seed_strategy_map
             seeded = seed_strategy_map(_strategy_map, _quenching)
             logger.info(f"[run_pipeline] 策略地图播种: {seeded} 条初始锚点")
             _trace("seed_map", True, {"entries": seeded})
@@ -454,7 +375,7 @@ def run_pipeline(
     # 决定本轮哪些信息类别被放大/抑制。
     # 注意场 = 连续增益向量，不是硬阈值过滤。
     try:
-        from .emotion_system.attention_field import (
+        from ..emotion_system.attention_field import (
             compute_attention_field_from_entity,
             ALL_CATEGORIES,
         )
@@ -491,7 +412,7 @@ def run_pipeline(
     tag_strings = [t.get("tag", "") for t in concept_tags if isinstance(t, dict)]
     _recalled_insights: List[Any] = []
     try:
-        from .memory_hub.insights import recall_insights as _recall_insights
+        from ..memory_hub.insights import recall_insights as _recall_insights
         _recalled_insights = _recall_insights(tag_strings)
         _trace("insights_recall", True, {
             "query_tags": tag_strings,
@@ -544,7 +465,7 @@ def run_pipeline(
     try:
         _af = getattr(entity, "_attention_field", None)
         if _af:
-            from .emotion_system.attention_field import apply_attention_to_drive_vector
+            from ..emotion_system.attention_field import apply_attention_to_drive_vector
             drive_vector = apply_attention_to_drive_vector(drive_vector, _af)
             _trace("drive_attention_mod", True, {
                 k: round(v, 3) for k, v in drive_vector.items()
@@ -628,9 +549,12 @@ def run_pipeline(
         }
         # V3：感受影响思考方向和深度
         # V2.0：传入 entity_state 和 concept_tags 触发枝干联想检索
+        # V4：协方差追踪器注意力权重调制建议优先级
+        _attn_weights = getattr(entity, "_attention_weights", None)
         thought_packet = thinking_think(
             wm_context, drive_vector, state_snapshot, thinking_params,
-            somatic_signals, entity_state=entity, concept_tags=concept_tags
+            somatic_signals, entity_state=entity, concept_tags=concept_tags,
+            attention_weights=_attn_weights,
         )
         _trace("think", True, {"questions": len(thought_packet.get("questions", [])), "suggestions": len(thought_packet.get("suggestions", []))})
     except Exception as e:
@@ -756,7 +680,7 @@ def run_pipeline(
             _sigma_base = 0.03
             _vocab_diversity = 1.0  # 默认
             try:
-                from .language_system.meta_cognitive import MetaCognitive
+                from ..language_system.meta_cognitive import MetaCognitive
                 _mc = MetaCognitive()
                 _diagnosis = _mc.diagnose(entity.to_state_snapshot())
                 _vocab_diversity = _diagnosis.get("vocabulary_diversity", 1.0)
@@ -1177,7 +1101,7 @@ def run_pipeline(
     # 感知 perceive_all 后的最新状态，生成内部叙事（纯内部，不上报 LLM）
     # 叙事在下一轮管线中被验证，coherence_meta 由 compute_coherence.py 悄悄接入
     try:
-        from .self_mapping import SelfBodyMap, NarrativeGenerator, build_relations_from_wm
+        from ..self_mapping import SelfBodyMap, NarrativeGenerator, build_relations_from_wm
 
         # 取 perceive_all 后的最新状态
         state_for_mapping = entity.to_state_snapshot()
@@ -1313,7 +1237,7 @@ def run_pipeline(
     # 调用 predict_action_effects 生成逐字段预期变化量
     # 结果写入 entity._last_prediction，供 Step 12 快照记录计算 prediction_error_map
     try:
-        from src.world_model_update.induct import predict_action_effects
+        from ..world_model_update.induct import predict_action_effects
         action_for_pred = emergent_action if emergent_action else decision.get("action_type", "")
         entity_wm = getattr(entity, "wm_rules", [])
         if action_for_pred and entity_wm:
@@ -1605,7 +1529,7 @@ def run_pipeline(
         entity._bp_unresolved_src = "external"
         state_for_bp = entity.to_state_snapshot()
         try:
-            from src.core import behavior_patterns as bp
+            from ..core import behavior_patterns as bp
 
             # score breakdown：记录 bias 对评分的影响
             candidate_name = (
@@ -1709,7 +1633,7 @@ def run_pipeline(
 
         # ---- 体感锚点 top-N 注入：不只看第 1 名，前几名都进候选池 ----
         try:
-            from .language_system.somatic_concept_map import get_top_matches
+            from ..language_system.somatic_concept_map import get_top_matches
             _cw = getattr(entity, "_cluster_weights", {})  # v11.3 聚类权重
             _top_somatic = get_top_matches(state_snapshot, top_k=3, min_score=0.2, cluster_weights=_cw)
             if _top_somatic:
@@ -1719,7 +1643,7 @@ def run_pipeline(
                 # 高分词触发同簇扩展——词汇多样化
                 _best_somatic_word, _best_somatic_score = _top_somatic[0]
                 if _best_somatic_score > 0.7:
-                    from .language_system.somatic_concept_map import get_cluster_peers
+                    from ..language_system.somatic_concept_map import get_cluster_peers
                     _peers = get_cluster_peers(_best_somatic_word, min_similarity=0.5)
                     for _peer in _peers[:3]:
                         if _peer not in [c for c, _ in scored_candidates]:
@@ -1740,7 +1664,7 @@ def run_pipeline(
         # 当一个词被正确使用多次（命中≥3, 效率>0.15），自动解锁变体
         # 如 "静" → "很静"、"有点静"、"静的"
         try:
-            from .language_system.word_warmup import inject_warmup_candidates
+            from ..language_system.word_warmup import inject_warmup_candidates
             scored_candidates = inject_warmup_candidates(
                 entity, scored_candidates,
                 min_hits=3, min_best_efficiency=0.15,
@@ -1775,7 +1699,7 @@ def run_pipeline(
         _quench_records = _quench_data.get("records", []) if _quench_data else []
         if _quench_records:
             try:
-                from .language_system.meta_cognitive import get_language_intervention
+                from ..language_system.meta_cognitive import get_language_intervention
                 _intervention = get_language_intervention(_quench_records)
                 if _intervention.get("deadlock_detected") or _intervention.get("exploration_boost", 0) > 0:
                     _penalty_words = _intervention.get("penalty_words", {})
@@ -1806,7 +1730,7 @@ def run_pipeline(
         # 「很怕」→ 阻力 0.05，「怕很」→ 阻力 0.95。
         # 不禁止任何表达，只让不通顺的组合「更费力」。
         try:
-            from .language_system.language_resistance import apply_resistance, init as _init_resistance
+            from ..language_system.language_resistance import apply_resistance, init as _init_resistance
             _init_resistance(resistance_weight=0.15)
             scored_candidates = apply_resistance(scored_candidates)
             # 阻力量级太大可能清空所有候选 → 降级
@@ -1866,7 +1790,7 @@ def run_pipeline(
             _display_word = best_candidate
             try:
                 import random as _rnd
-                from .language_system.somatic_dictionary import SOMATIC_DICTIONARY
+                from ..language_system.somatic_dictionary import SOMATIC_DICTIONARY
                 _func_cats = ["actions", "degree", "time", "question", "logic"]
                 _cat = _rnd.choice(_func_cats)
                 _func_words = list(SOMATIC_DICTIONARY.get(_cat, {}).keys())
@@ -1887,8 +1811,8 @@ def run_pipeline(
             # 准确 → 施加反向帮助（抵消该词描述的不适）→ 消力奖励
             # 不准确 → 无帮助、无奖励 → 她学到这个词不适合这个状态
             try:
-                from .language_system.somatic_concept_map import apply_help_delta, training_exploration_nudge
-                from .language_system.meta_cognitive import apply_meta_cognitive
+                from ..language_system.somatic_concept_map import apply_help_delta, training_exploration_nudge
+                from ..language_system.meta_cognitive import apply_meta_cognitive
                 help_result = apply_help_delta(
                     best_candidate, entity, state_snapshot,
                     min_match=0.30,
@@ -2006,14 +1930,17 @@ def run_pipeline(
         # 训练模式：语言系统已选出最佳候选，直接输出，跳过 LLM
         _train_text = entity._training_override
         try:
-            from .language_system.sentence_composer import compose_sentence
-            _composed = compose_sentence(
+            from ..language_system.sentence_composer import compose_sentence
+            _composed, _tmpl_idx = compose_sentence(
                 getattr(entity, '_language_best_candidate', '') or _train_text,
                 state_snapshot,
                 connector="",
+                learned_weights=getattr(entity, "_template_learned_weights", None),
+                extra_templates=getattr(entity, "_runtime_templates", None),
             )
             if _composed:
                 _train_text = _composed
+                entity._last_template_idx = _tmpl_idx
         except Exception:
             pass
         response = {"text": _train_text, "confidence": 0.90, "generation_time_ms": 0}
@@ -2025,31 +1952,53 @@ def run_pipeline(
         # ---- 启动恢复：首次 daemon tick 从 episode 恢复学习进度 ----
         if not getattr(entity, "_recovery_done", False):
             try:
-                from .session_recovery import recover_learning_from_episodes
+                from ..session_recovery import recover_learning_from_episodes
                 recover_learning_from_episodes(entity)
+            except Exception:
+                pass
+            # 恢复模板学习状态
+            try:
+                from ..language_system import template_learner
+                _tld = getattr(entity, "_template_learner_data", None)
+                if _tld and isinstance(_tld, dict):
+                    _lw, _rt, _sc = template_learner.from_dict(_tld)
+                    entity._template_learned_weights = _lw
+                    entity._runtime_templates = _rt
+                    entity._spawn_counter = _sc
             except Exception:
                 pass
             entity._recovery_done = True
 
         try:
-            from .language_training import match_anchor_expression
+            from ..language_training import match_anchor_expression
             _real_state = entity.to_state_snapshot()
             _result = match_anchor_expression(_real_state, entity, return_details=True)
             _anchor_text = _result.get("text", "") if isinstance(_result, dict) else _result
             _best_word = _result.get("best_word") if isinstance(_result, dict) else None
+            _opening = _result.get("opening_particle", "") if isinstance(_result, dict) else ""
 
             if _anchor_text:
+                _tmpl_idx = -1
                 try:
-                    from .language_system.sentence_composer import compose_sentence
-                    _composed = compose_sentence(
+                    from ..language_system.sentence_composer import compose_sentence
+                    # 从 QuenchingTracker 获取历史模板效率
+                    _te = {}
+                    _q_tmp = getattr(entity, "_quenching", None)
+                    if _q_tmp is not None:
+                        _te = _q_tmp.get_template_efficiency()
+                    _composed, _tmpl_idx = compose_sentence(
                         _best_word or _anchor_text,
                         _real_state,
-                        connector="",
+                        connector=_opening,
+                        template_efficiency=_te,
+                        learned_weights=getattr(entity, "_template_learned_weights", None),
+                        extra_templates=getattr(entity, "_runtime_templates", None),
                     )
                     if _composed:
                         _anchor_text = _composed
                 except Exception:
                     pass
+                entity._last_template_idx = _tmpl_idx
                 response = {"text": _anchor_text, "confidence": 0.85, "generation_time_ms": 0}
                 _trace("output", True, {"mode": "anchor_auto", "text": _anchor_text[:40]})
                 logger.info(f"[AnchorAuto] t={entity.tick} said: '{_anchor_text}'")
@@ -2058,7 +2007,7 @@ def run_pipeline(
                 # ---- 表达消力 + 消力记录（daemon 自主学习）----
                 if _best_word:
                     try:
-                        from .quenching_system import expression_quenching
+                        from ..quenching_system import expression_quenching
                         _ur_before = float(_real_state.get("unresolved", 0.0))
                         # 施加表达消力效果（内部已写回 entity）
                         expression_quenching(entity, _best_word)
@@ -2075,21 +2024,55 @@ def run_pipeline(
                             delta_unresolved_before=_ur_before,
                             delta_unresolved_after=_ur_after,
                             tick=entity.tick,
+                            template_idx=getattr(entity, "_last_template_idx", -1),
                         )
                         entity._quenching_data = _q.to_dict()
+
+                        # ---- 模板权重学习 + 进化 ----
+                        try:
+                            from ..language_system import template_learner
+                            _eff = max(0.0, _ur_before - _ur_after)
+                            _lw = getattr(entity, "_template_learned_weights", {})
+                            template_learner.update_weights(
+                                getattr(entity, "_last_template_idx", -1),
+                                _real_state, _eff, _lw,
+                            )
+                            entity._template_learned_weights = _lw
+
+                            # 尝试进化新模板
+                            from ..language_system.sentence_composer import PATTERNS
+                            _rt = getattr(entity, "_runtime_templates", [])
+                            _sc = getattr(entity, "_spawn_counter", 0)
+                            _stats = _q.get_template_stats()
+                            _new_tmpl, _sc = template_learner.try_spawn_template(
+                                _stats, PATTERNS, _rt, _sc,
+                            )
+                            entity._spawn_counter = _sc
+                            if _new_tmpl is not None:
+                                _new_tmpl["born_tick"] = entity.tick
+                                _rt.append(_new_tmpl)
+                                entity._runtime_templates = _rt
+                                logger.info(f"[TemplateLearner] t={entity.tick} new template: {_new_tmpl['template']}")
+
+                            # 持久化学习状态
+                            entity._template_learner_data = template_learner.to_dict(
+                                _lw, _rt, _sc,
+                            )
+                        except Exception:
+                            pass
                     except Exception:
                         pass
 
                 # ---- 热身注入（daemon 自主积累）----
                 try:
-                    from .language_system.word_warmup import inject_warmup_candidates
+                    from ..language_system.word_warmup import inject_warmup_candidates
                     inject_warmup_candidates(entity, [], min_hits=3, min_best_efficiency=0.15)
                 except Exception:
                     pass
 
                 # ---- 训练 episode 写入（daemon 自主学习持久化）----
                 try:
-                    from .memory_hub.episodes_db import Episode, write_episode
+                    from ..memory_hub.episodes_db import Episode, write_episode
                     from datetime import datetime, timezone
                     _ep = Episode(
                         iteration_id=entity.tick,
@@ -2107,7 +2090,7 @@ def run_pipeline(
                 # ---- 内源校准（每 30 tick 回溯验证一次）----
                 if entity.tick % 30 == 0:
                     try:
-                        from .endogenous_calibration import calibrate_from_episodes, apply_calibration
+                        from ..endogenous_calibration import calibrate_from_episodes, apply_calibration
                         _calib_report = calibrate_from_episodes(entity, _real_state, limit=5)
                         apply_calibration(entity, _calib_report)
                         if _calib_report.get("verified_count", 0) > 0:
@@ -2130,7 +2113,7 @@ def run_pipeline(
         # V2.0：主线检索——注入对话历史层 + 相关历史经验
         mainline_result = None
         try:
-            from src.memory_retrieval.mainline import mainline_retrieval
+            from ..memory_retrieval.mainline import mainline_retrieval
             mainline_result = mainline_retrieval(
                 semantic_packet_biased,
                 current_iteration_id=entity.tick,
@@ -2369,7 +2352,7 @@ def run_pipeline(
         if buf is not None:
             # V2.0：构建 memory_trace
             try:
-                from src.observation.behavior_trace import build_memory_trace
+                from ..observation.behavior_trace import build_memory_trace
                 memory_trace = build_memory_trace(
                     mainline_result=mainline_result,
                     branch_result=thought_packet.get("branch_memories", []) if thought_packet else [],
@@ -2401,7 +2384,7 @@ def run_pipeline(
 
     # ---- Step 11.5: BP 压制Tick递减 + 长期效果计算 + bias 衰减 ----
     try:
-        from src.core import behavior_patterns as bp
+        from ..core import behavior_patterns as bp
         bp.get_pool().tick_suppress()
         action_history = [s.get("action_type", "") for s in entity.snapshots[-20:]]
         bp.get_pool().compute_long_term_effects(entity.tick, entity.snapshots, action_history)
@@ -2420,7 +2403,7 @@ def run_pipeline(
     # 基于本轮决策结果和用户互动状态，运行全部消力通道。
     # 注意场联动：消力 → 信息类别增益回拉（防止 tunnel vision）。
     try:
-        from .quenching_system import apply_all_quenching, QuenchingJournal
+        from ..quenching_system import apply_all_quenching, QuenchingJournal
 
         # 初始化或恢复 journal
         _qj = getattr(entity, "_quenching_journal", None)
@@ -2508,7 +2491,7 @@ def run_pipeline(
 
     # V2.0：生成对话摘要（供后续管线的主线检索对话历史层使用）
     try:
-        from src.memory_retrieval.summary import generate_turn_summary
+        from ..memory_retrieval.summary import generate_turn_summary
         turn_summary = generate_turn_summary(
             raw_input=raw_input,
             output_text=response.get("text", ""),
@@ -2674,6 +2657,7 @@ def run_pipeline(
                 delta_unresolved_before=before_unresolved,
                 delta_unresolved_after=after_unresolved,
                 tick=entity.tick,
+                template_idx=getattr(entity, "_last_template_idx", -1),
             )
             # v11.2: 同时记录个体词（拆分组合词），供词热身系统追踪
             # 每个组成词单独记一条，效率 ≈ 组合效率 × 0.8（保守归因）
@@ -2708,12 +2692,25 @@ def run_pipeline(
             except Exception:
                 pass
 
+            # ---- 模板权重学习 + 进化（L3b 路径）----
+            try:
+                from ..language_system import template_learner
+                _eff_l3b = max(0.0, before_unresolved - after_unresolved)
+                _lw = getattr(entity, "_template_learned_weights", {})
+                template_learner.update_weights(
+                    getattr(entity, "_last_template_idx", -1),
+                    dict(_lang_before_state), _eff_l3b, _lw,
+                )
+                entity._template_learned_weights = _lw
+            except Exception:
+                pass
+
             # ---- v11.3 长词->聚类权重：3+字词修正体感概念地图锚点影响力 ----
             # 长词不产生热身变体，但用于调秤：效率高的长词所属的聚类获得权重，
             # 后续体感匹配时该聚类更受重视。短词造砖，长词调秤。
             if len(_lang_expression) > 2 and real_efficiency > 0.10:
                 try:
-                    from .language_system.somatic_concept_map import find_closest_anchor
+                    from ..language_system.somatic_concept_map import find_closest_anchor
                     _anchor_result = find_closest_anchor(_lang_expression, min_score=0.25)
                     if _anchor_result:
                         _anchor_name, _anchor_sim = _anchor_result
@@ -2811,491 +2808,27 @@ def run_pipeline(
 
 
 # ============================================================================
+# 子模块导入（原文件中的独立函数已拆分到子模块）
+# ============================================================================
+
 # 异步管线
-# ============================================================================
+from .async_pipeline import (
+    process_async_updates,
+    trigger_sleep_if_needed as _trigger_sleep_async,
+    run_world_model_update_cycle_async,
+)
 
-async def process_async_updates(
-    experience_log: ExperienceLog,
-    state_snapshot: StateSnapshot,
-    entity_id: str = "default",
-    entity=None,
-    param_snapshot=None,
-) -> Optional[Dict[str, Any]]:
-    """
-    异步经验处理入口。
-
-    在决策管线完成后调用（在决策结果写入快照之后）。
-    将经验+状态自然写入 TetraMem，可选读取拓扑并降维为信号。
-    状态驱动触发世界模型归纳周期。
-
-    参数：
-        entity_id       : 实体唯一标识
-        experience_log  : 本轮经验日志
-        state_snapshot  : 本轮状态快照
-        entity         : EntityState 实例（可选，用于预加载外部记忆到 memory_context）
-        param_snapshot  : ParameterSnapshot 实例（可选，用于读取 world_model 触发阈值）
-    """
-    try:
-        # ---- 预加载外部记忆（不阻塞，异步进行）----
-        if entity is not None:
-            try:
-                from .memory_bias.memory_bias import load_memories_to_entity
-                intent = "seek"  # 默认意图，预留
-                emotion = 0.0
-                if experience_log and hasattr(experience_log, "tags"):
-                    tags = getattr(experience_log, "tags", [])
-                    for tag in tags:
-                        if tag.startswith("intent:"):
-                            intent = tag[len("intent:"):]
-                            break
-                await load_memories_to_entity(
-                    entity=entity,
-                    intent=intent,
-                    emotion=emotion,
-                    limit=3,
-                )
-            except Exception as e:
-                logger.debug(f"[EntityZero] Preload memories skipped: {e}")
-
-        await log_experience_with_context(
-            entity_id=entity_id,
-            experience_log=experience_log,
-            state_snapshot=state_snapshot,
-        )
-
-        topo = await get_topology_metrics()
-        pressure_signal = calculate_memory_pressure_from_topology(topo)
-        if pressure_signal is not None:
-            return pressure_signal.to_dict()
-
-        # ---- 状态驱动：检查快照累积量，触发世界模型更新 ----
-        if entity is not None and param_snapshot is not None:
-            try:
-                from .world_model_update.defaults import get_raw_value
-                snapshot_count = len(entity.snapshots)
-                induction_threshold = int(get_raw_value(
-                    param_snapshot,
-                    "world_model.induction_min_rounds",
-                    5.0,
-                ))
-                if snapshot_count >= induction_threshold:
-                    # 经验质量检查：快照间多样性 CV 低于阈值时强制跳过
-                    diversity_ok = True
-                    try:
-                        cv_thresh = get_raw_value(
-                            param_snapshot,
-                            "world_model.diversity_cv_threshold",
-                            0.08,
-                        )
-                        diversity_ok = _compute_snapshot_diversity(getattr(entity, "snapshots", [])) >= cv_thresh
-                    except Exception:
-                        pass  # 检查失败时放行，宁可多学也不漏学
-                    if not diversity_ok:
-                        logger.debug(
-                            f"[EntityZero] WM update skipped: low snapshot diversity "
-                            f"(CV < {cv_thresh:.3f})"
-                        )
-                    else:
-                        retention = int(get_raw_value(
-                            param_snapshot,
-                            "world_model.retention_after_update",
-                            5.0,
-                        ))
-                        _wmu_cycle = await run_world_model_update_cycle_async(
-                            old_rules=entity.wm_rules,
-                            snaps=entity.snapshots,
-                            dialogue_log=[],
-                            state_snapshot=state_snapshot,
-                            param_snapshot=param_snapshot,
-                            embedding_provider=None,
-                        )
-                        _trace("wmu_update", True, {
-                            "snapshots_processed": snapshot_count,
-                            "new_rules": len(_wmu_cycle[0]) if _wmu_cycle else 0,
-                        })
-                        # 更新完成后清空已处理的快照，保留最近 N 轮作为上下文
-                        old_rule_ids = {r.get("id") if isinstance(r, dict) else getattr(r, "id", None)
-                                        for r in entity.wm_rules}
-                        entity.wm_rules = _wmu_cycle[0] if _wmu_cycle else entity.wm_rules
-                        entity.snapshots = entity.snapshots[-retention:] if entity.snapshots else []
-
-                        # Insights 衰减同步：新规则替换旧列表后同步一次
-                        try:
-                            from .memory_hub.insights import sync_decay as _sync_decay
-                            _sync_decay(entity.wm_rules)
-                        except Exception:
-                            pass
-
-                        # Insights 升级：找出本轮新升 active 的规则，触发写入
-                        if _wmu_cycle:
-                            new_rules = _wmu_cycle[0]
-                            upgrade_threshold = get_raw_value(
-                                param_snapshot,
-                                "world_model.upgrade_to_insight_threshold",
-                                0.7,
-                            )
-                            newly_active = [
-                                r for r in new_rules
-                                if (r.get("status") if isinstance(r, dict) else getattr(r, "status", ""))
-                                   == "active"
-                                and (r.get("id") if isinstance(r, dict) else getattr(r, "id", None))
-                                   not in old_rule_ids
-                                and (r.get("confidence", 0.0) if isinstance(r, dict)
-                                     else getattr(r, "confidence", 0.0)) >= upgrade_threshold
-                            ]
-                            if newly_active:
-                                try:
-                                    from .memory_hub.insights import write_insight_batch as _write_insight_batch
-                                    upgraded = _write_insight_batch(newly_active)
-                                    if upgraded > 0:
-                                        logger.info(f"[EntityZero] Insights upgraded: {upgraded} rules")
-                                except Exception:
-                                    pass
-
-                        logger.info(
-                            f"[EntityZero] WM update done: {snapshot_count} snaps → "
-                            f"{len(entity.wm_rules)} rules, kept {retention} as context"
-                        )
-            except Exception as e:
-                logger.debug(f"[EntityZero] WM update skipped: {e}")
-
-        return None
-
-    except Exception as e:
-        logger.error(f"[EntityZero] TetraMem async failed, skipped: {e}")
-        return None
-
-
-async def trigger_sleep_if_needed(
-    entity_id: str,
-    fatigue: float,
-    current_residue: float,
-) -> float:
-    """
-    状态驱动的睡眠触发器。
-
-    此函数本身不决定是否睡眠——决策由 V4 裁决层做出。
-    此函数仅执行"睡眠"动作的物理后果（做梦、残留层衰减）。
-    """
-    try:
-        return await execute_sleep_cycle(
-            entity_id=entity_id,
-            current_residue=current_residue,
-        )
-    except Exception as e:
-        logger.error(f"[EntityZero] Sleep cycle failed, residue unchanged: {e}")
-        return current_residue
-
-
-async def run_world_model_update_cycle_async(
-    old_rules: List[Any],
-    snaps: List[Any],
-    dialogue_log: Any,
-    state_snapshot: Any,
-    param_snapshot: ParameterSnapshot,
-    embedding_provider: Optional[Any] = None,
-) -> tuple[List[Any], _WMUCycleStats]:
-    """
-    世界模型更新异步反思周期主入口（world_model_update 管线）。
-    """
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
-        None,
-        _wmu_run_update_cycle,
-        old_rules,
-        snaps,
-        dialogue_log,
-        state_snapshot,
-        param_snapshot,
-        embedding_provider,
-    )
-
+# 独立工具函数
+from .utils import (
+    should_trigger_sleep,
+    _update_behavior_rules,
+    _compute_snapshot_diversity,
+    get_default_drive_params,
+    _build_decision_params,
+    _build_output_params,
+    mock_llm_callable,
+)
 
 # ============================================================================
-# 状态驱动触发检查（供裁决层调用）
+# END OF MODULE — 以下代码已移至子模块
 # ============================================================================
-
-def should_trigger_sleep(fatigue: float, stress: float) -> bool:
-    """
-    睡眠触发条件检查。
-
-    状态驱动：fatigue 或 stress 超过阈值时，触发睡眠信号。
-    此函数本身不触发睡眠，仅返回布尔值供裁决层参考。
-    """
-    return fatigue > 0.9 or stress > 0.85
-
-
-# ============================================================================
-# V6: 行为规则学习
-# ============================================================================
-
-def _update_behavior_rules(entity, decision: dict) -> None:
-    """
-    管线结束时，从本轮 snapshot 更新行为规则。
-
-    只记录有实际效果的动作（至少一个维度变化 > 0.01）。
-    失败静默跳过。
-    """
-    try:
-        from src.core.behavior_vector import update_rules_from_snapshot
-        snaps = getattr(entity, "snapshots", [])
-        if len(snaps) < 2:
-            return
-        action_type = decision.get("action_type", "")
-        if not action_type:
-            return
-        pre = snaps[-2]
-        post = snaps[-1]
-
-        # 内生筛选：只记她当前在乎的变化
-        # relevance = Σ |delta[dim]| × drive_pressure[dim]
-        # loneliness 高时 loneliness 的小变化也值得记
-        # loneliness 低时再大的变化也是噪音
-        drive_weights = {
-            "energy":       max(0.0, 1.0 - entity.energy),
-            "loneliness":   entity.loneliness,
-            "fatigue":      entity.fatigue,
-            "info_gap":     entity.info_gap,
-            "unresolved":   entity.unresolved,
-            "somatic_tone": abs(entity.somatic_tone),
-            "danger_level": getattr(entity, "danger_level", 0.0),
-            "approach_drive": getattr(entity, "approach_drive", 0.0),
-            "avoid_drive":  getattr(entity, "avoid_drive", 0.0),
-        }
-        relevance = 0.0
-        for k in pre:
-            if k in post and k in drive_weights:
-                delta = abs(float(post.get(k, 0)) - float(pre.get(k, 0)))
-                relevance += delta * drive_weights[k]
-        if relevance < 0.005:  # 加权总变化太小 → 不值得记
-            return
-
-        snap = {
-            "action_type": action_type,
-            "pre_state": dict(pre),
-            "post_state": dict(post),
-        }
-        update_rules_from_snapshot(entity, snap, entity.tick)
-    except Exception:
-        pass
-
-
-# ============================================================================
-# 经验质量：快照多样性计算
-# ============================================================================
-
-def _compute_snapshot_diversity(snaps: list) -> float:
-    """
-    计算快照集合的多样性（状态变化向量夹角余弦）。
-
-    快照多样性低（CV 低）→ 各轮状态变化模式相似 → 学习价值低 → 跳过归纳。
-    多样性高 → 状态变化模式丰富 → 学习价值高 → 执行归纳。
-
-    返回：
-        float — 快照间平均余弦距离（0=完全相同, 1=完全不相关）。
-        snapshots 不足 2 个时返回 1.0（允许学习）。
-    """
-    if not snaps or len(snaps) < 2:
-        return 1.0
-
-    def _to_vec(snap) -> dict:
-        if hasattr(snap, "pre_state") and hasattr(snap, "post_state"):
-            pre = getattr(snap, "pre_state", {})
-            post = getattr(snap, "post_state", {})
-        elif isinstance(snap, dict):
-            pre = snap.get("pre_state", {})
-            post = snap.get("post_state", {})
-        else:
-            return {}
-        all_keys = set(pre.keys()) | set(post.keys())
-        return {k: post.get(k, 0.0) - pre.get(k, 0.0) for k in all_keys}
-
-    vecs = [_to_vec(s) for s in snaps]
-    valid = [v for v in vecs if v]
-    if len(valid) < 2:
-        return 1.0
-
-    total_dist = 0.0
-    count = 0
-    for i in range(len(valid)):
-        for j in range(i + 1, len(valid)):
-            v1, v2 = valid[i], valid[j]
-            all_keys = set(v1.keys()) | set(v2.keys())
-            if not all_keys:
-                continue
-            dot = sum(v1.get(k, 0.0) * v2.get(k, 0.0) for k in all_keys)
-            mag1 = math.sqrt(sum(v1.get(k, 0.0) ** 2 for k in all_keys))
-            mag2 = math.sqrt(sum(v2.get(k, 0.0) ** 2 for k in all_keys))
-            if mag1 > 1e-9 and mag2 > 1e-9:
-                cos = dot / (mag1 * mag2)
-                # 余弦距离 = 1 - cos，余弦越接近1（相似）距离越小
-                total_dist += (1.0 - cos)
-                count += 1
-
-    if count == 0:
-        return 1.0
-    return total_dist / count
-
-
-# 辅助函数
-# ============================================================================
-
-def get_default_drive_params() -> Dict[str, Any]:
-    """返回驱动力系统的默认形态表参数"""
-    return {
-        "info_hunger_time_shape": {
-            "x_anchors": [0.0, 0.3, 0.8, 1.0, 2.0, 5.0],
-            "y_anchors": [0.0, 0.02, 0.15, 0.60, 0.85, 0.99]
-        },
-        "social_time_shape": {
-            "x_anchors": [0.0, 0.5, 1.0, 2.0, 4.0],
-            "y_anchors": [0.0, 0.05, 0.30, 0.70, 0.98]
-        },
-        "loneliness_shape": {
-            "x_anchors": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-            "y_anchors": [0.0, 0.01, 0.05, 0.15, 0.45, 1.0]
-        },
-        "fatigue_shape": {
-            "x_anchors": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-            "y_anchors": [0.0, 0.02, 0.08, 0.20, 0.50, 1.0]
-        },
-        "change_shape": {
-            "x_anchors": [0.0, 0.25, 0.5, 0.75, 1.0],
-            "y_anchors": [0.0, 0.05, 0.20, 0.55, 1.0]
-        },
-        "debt_shape": {
-            "x_anchors": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-            "y_anchors": [0.0, 0.01, 0.05, 0.15, 0.40, 1.0]
-        },
-    }
-
-
-def _build_decision_params(snapshot: ParameterSnapshot) -> Dict[str, Any]:
-    """从参数快照构建裁决系统参数"""
-    return {
-        "module_weights": {
-            "SituationAssessment": get_param(snapshot, "decision.module_weights.SituationAssessment", 1.0),
-            "ContextAwareness": get_param(snapshot, "decision.module_weights.ContextAwareness", 1.0),
-            "ThoughtIntegration": get_param(snapshot, "decision.module_weights.ThoughtIntegration", 1.0),
-            "SignalActivation": get_param(snapshot, "decision.module_weights.SignalActivation", 1.0),
-            "MainlineConstraint": get_param(snapshot, "decision.module_weights.MainlineConstraint", 1.0),
-            "TemporalPressure": get_param(snapshot, "decision.module_weights.TemporalPressure", 1.0),
-            "SelfState": get_param(snapshot, "decision.module_weights.SelfState", 1.0),
-            "Preference": get_param(snapshot, "decision.module_weights.Preference", 1.0),
-            "WorldModel": get_param(snapshot, "decision.module_weights.WorldModel", 1.0),
-        },
-        "survival_override_threshold": get_param(snapshot, "decision.survival_override_threshold", 0.85),
-        "max_suggestions": get_param(snapshot, "decision.max_suggestions", 2),
-        "fallback_priority": get_param(snapshot, "decision.fallback_priority", 0.0),
-        "personality": get_param(snapshot, "personality", {
-            "introverted_bias": 0.2,
-            "extroverted_bias": 0.1,
-        }),
-        "web_search": {
-            "enabled": get_param(snapshot, "web_search.enabled", True),
-            "info_hunger_threshold": get_param(snapshot, "web_search.info_hunger_threshold", 0.6),
-            "wm_hit_threshold": get_param(snapshot, "web_search.wm_hit_threshold", 0.3),
-            "intent_intensity_threshold": get_param(snapshot, "web_search.intent_intensity_threshold", 0.6),
-            "max_results": get_param(snapshot, "web_search.max_results", 5),
-            "timeout_seconds": get_param(snapshot, "web_search.timeout_seconds", 8.0),
-            "backend": get_param(snapshot, "web_search.backend", None),
-        },
-    }
-
-
-def _build_output_params(snapshot: ParameterSnapshot) -> Dict[str, Any]:
-    """从参数快照构建输出层参数"""
-    return {
-        "model_name": get_param(snapshot, "llm.model_name", "qwen2.5:3b"),
-        "temperature": get_param(snapshot, "llm.temperature", 0.7),
-        "max_tokens": int(get_param(snapshot, "llm.max_tokens", 300)),
-        "output_llm_timeout_ms": get_param(snapshot, "llm.output_llm_timeout_ms", 90000),
-    }
-
-
-# ============================================================================
-# Mock LLM（用于测试，无外部依赖）
-# ============================================================================
-
-def mock_llm_callable(
-    system_prompt: str,
-    user_prompt: str,
-    temperature: float,
-    max_tokens: int,
-    timeout_ms: float,
-) -> tuple[Optional[str], Optional[str]]:
-    """Mock LLM 调用，用于测试"""
-    return "嗯，我听到了。", None
-
-
-# ============================================================================
-# 测试入口
-# ============================================================================
-
-if __name__ == "__main__":
-    import time as _time
-
-    print("=" * 64)
-    print("Entity Zero Iteration — 同步管线集成测试")
-    print("=" * 64)
-
-    # 重置状态
-    reset_entity_state()
-    entity = get_entity_state()
-
-    # Mock LLM callable（用于测试，不依赖真实 LLM）
-    def test_llm(
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float,
-        max_tokens: int,
-        timeout_ms: float,
-    ) -> tuple[Optional[str], Optional[str]]:
-        # 根据 intent_repr 的 goal 和 state_snapshot 动态生成回复
-        return "嗯，我听到了。", None
-
-    test_inputs = [
-        ("你好呀！", "正常外部输入-打招呼"),
-        ("我今天很开心！", "分享正面情绪"),
-        ("怎么解决这个问题？", "求助意图"),
-        ("我好烦啊，什么破事", "抱怨负面情绪"),
-        ("凭什么要听你的！", "挑战对抗"),
-        (None, "内部 tick（无外部输入）"),
-    ]
-
-    for raw_input, name in test_inputs:
-        print(f"\n{'─'*64}")
-        print(f"【{name}】")
-        if raw_input:
-            print(f"  输入: {raw_input}")
-        else:
-            print(f"  输入: <内部 tick>")
-
-        result = run_pipeline(
-            raw_input=raw_input,
-            entity_state=entity,
-            debug=True,
-            llm_callable=test_llm,
-        )
-
-        print(f"\n  决策: {result['decision']['action_type']} | target={result['decision']['target']} | priority={result['decision']['priority']:.3f}")
-        print(f"  回应: {result['response']['text']}")
-        print(f"  状态: energy={result['state_snapshot']['energy']:.3f} fatigue={result['state_snapshot']['fatigue']:.3f} loneliness={result['state_snapshot']['loneliness']:.3f}")
-        print(f"  驱动力: curiosity={result['drive_vector']['curiosity']:.3f} info_hunger={result['drive_vector']['info_hunger']:.3f}")
-        print(f"  世界模型命中: {len(result['wm_context']['matched_rules'])} 条, hit_rate={result['wm_context']['coverage']['hit_rate']:.2f}")
-        print(f"  总耗时: {result['total_ms']:.1f}ms")
-        print(f"  Tick: {result['tick']}")
-
-    print(f"\n{'='*64}")
-    print(f"全部测试完成。最终 Tick: {entity.tick}")
-    print(f"经验快照数: {len(entity.snapshots)}")
-    print(f"记忆上下文数: {len(entity.memory_context)}")
-    print(f"世界模型规律数: {len(entity.wm_rules)}")
-    print("=" * 64)
-
-
-# ============================================================================
-# v11.4 纯语言训练模式（关管线，只跑语言学习）
-# ============================================================================
-
-

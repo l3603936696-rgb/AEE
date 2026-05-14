@@ -45,6 +45,12 @@ verify_pending = _verify.verify_pending
 decay_rules = _decay.decay_rules
 merge_rules = _merge.merge_rules
 
+# 维度维护成本（奥卡姆剃刀动力学）
+from .dimension_cost import compute_dimension_values, dimension_decay_modifier
+
+# 矛盾检测
+from .contradiction import detect_contradictions
+
 __all__ = [
     # 数据结构
     "Rule",
@@ -70,4 +76,9 @@ __all__ = [
     # 配置
     "DEFAULT_PARAMS",
     "get_param",
+    # 维度维护成本
+    "compute_dimension_values",
+    "dimension_decay_modifier",
+    # 矛盾检测
+    "detect_contradictions",
 ]

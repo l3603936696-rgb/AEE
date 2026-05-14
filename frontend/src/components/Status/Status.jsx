@@ -132,8 +132,11 @@ function Status({ xiaState }) {
       loneliness_surface: xiaState.loneliness_surface ?? 0,
       boredom_despair:   xiaState.boredom_despair   ?? 0,
       boredom_futility:  xiaState.boredom_futility  ?? 0,
-      unlocked_vocab_count: xiaState.unlocked_vocab_count ?? 0,
-      tick:              xiaState.current_tick ?? xiaState.tick ?? 0,
+      suppressed_tension: xiaState.suppressed_tension ?? 0,
+        unlocked_vocab_count: xiaState.unlocked_vocab_count ?? 0,
+        template_learned_count: xiaState.template_learned_count ?? 0,
+        runtime_template_count: xiaState.runtime_template_count ?? 0,
+        tick:              xiaState.current_tick ?? xiaState.tick ?? 0,
       uptime,
       last_interaction: lastInteraction,
       current_action: decision.action_type || 'idle',
@@ -340,6 +343,28 @@ function Status({ xiaState }) {
         </div>
       </section>
 
+      {/* 风化张力 */}
+      <section className="status-section">
+        <h2 className="section-title">{t('status_tension')}</h2>
+        <div className="status-bar-item">
+          <span className="status-label">
+            {t('status_suppressed_tension')}
+          </span>
+          <div className="status-bar">
+            <div
+              className="status-bar-fill"
+              style={{
+                width: `${Math.min(100, (state?.suppressed_tension || 0) / 1.5 * 100)}%`,
+                backgroundColor: (state?.suppressed_tension || 0) > 1.0 ? '#e74c3c' : '#f39c12'
+              }}
+            />
+          </div>
+          <span className="status-value">
+            {(state?.suppressed_tension || 0).toFixed(3)}
+          </span>
+        </div>
+      </section>
+
       {/* 当前行为 + 词汇 */}
       <section className="status-section">
         <h2 className="section-title">{lang === 'zh' ? '当前行为' : 'Current Behavior'}</h2>
@@ -354,7 +379,7 @@ function Status({ xiaState }) {
             {lang === 'zh' ? '躯体基调' : 'Somatic Tone'}: {getToneDescription(state.somatic_tone)} ({state.somatic_tone.toFixed(3)})
           </div>
           <div className="vocab-summary">
-            {t('status_unlocked')}: {state.unlocked_vocab_count} {lang === 'zh' ? '个' : 'words'}
+            {t('status_unlocked')}: {state.unlocked_vocab_count} {lang === 'zh' ? '个' : 'words'} | {lang === 'zh' ? '已学模板' : 'Learned'} {state.template_learned_count} | {lang === 'zh' ? '进化模板' : 'Runtime'} {state.runtime_template_count}
           </div>
         </div>
       </section>

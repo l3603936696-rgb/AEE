@@ -22,6 +22,7 @@ from typing import Any, Dict, List
 
 from .defaults import get_param, get_raw_value
 from .rules import Rule
+from .model_inertia import compute_inertia, inertia_verify_factor
 
 
 # ============================================================================
@@ -224,6 +225,12 @@ def verify_pending(
             if delta == 0.0:
                 result_rules.append(rule)
                 continue
+
+            # 模型惯性：负面验证时，高惯性规律受单次反面证据影响更小
+            # 正面验证不受影响（好消息不需要克服惯性）
+            if delta < 0:
+                inertia = compute_inertia(rule, list(rules_map.values()), now)
+                delta *= inertia_verify_factor(inertia)
 
             # 更新置信度
             new_conf = rule.confidence + delta

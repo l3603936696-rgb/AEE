@@ -117,6 +117,50 @@ _ACTION_TEMPLATES = {
 
 
 # ============================================================================
+# 状态维度 → 关联驱动力映射（注意力反馈用）
+# ============================================================================
+
+_DIM_TO_DRIVES = {
+    "loneliness":         ["loneliness_drive"],
+    "loneliness_core":    ["loneliness_drive"],
+    "loneliness_surface": ["loneliness_drive"],
+    "energy":             ["fatigue_avoid"],
+    "fatigue":            ["fatigue_avoid"],
+    "stress":             ["fatigue_avoid"],
+    "info_gap":           ["info_hunger", "curiosity"],
+    "curiosity":          ["curiosity"],
+    "unresolved":         ["curiosity", "info_hunger"],
+    "boredom":            ["obsolescence_anxiety"],
+    "boredom_despair":    ["obsolescence_anxiety"],
+    "boredom_futility":   ["obsolescence_anxiety"],
+    "approach_drive":     ["curiosity"],
+    "avoid_drive":        ["fatigue_avoid"],
+}
+
+# 注意力调制强度：最大可使优先级 ×1.5
+_ATTENTION_BOOST_SCALE = 0.5
+
+
+def _compute_drive_attention(attention_weights: Optional[Dict[str, float]]) -> Dict[str, float]:
+    """
+    从维度注意力权重计算每个驱动力的注意力加成。
+
+    逻辑：对每个驱动力，取其关联维度中最高的注意力权重。
+    返回 {drive: boost}，boost ∈ [0, _ATTENTION_BOOST_SCALE]。
+    """
+    if not attention_weights:
+        return {}
+    drive_boost: Dict[str, float] = {}
+    for dim, weight in attention_weights.items():
+        for drive in _DIM_TO_DRIVES.get(dim, []):
+            current = drive_boost.get(drive, 0.0)
+            if weight > current:
+                drive_boost[drive] = weight
+    # scale
+    return {k: round(v * _ATTENTION_BOOST_SCALE, 4) for k, v in drive_boost.items()}
+
+
+# ============================================================================
 # 感质调制（v3 改造）
 # ============================================================================
 
@@ -221,8 +265,14 @@ def _question(rule: dict, drive: Optional[str]) -> Dict[str, Any]:
 # 建议生成（Step 5）
 # ============================================================================
 
-def _suggest(dv: dict, params: dict, somatic_signals: Optional[dict] = None) -> List[Dict[str, Any]]:
+def _suggest(
+    dv: dict,
+    params: dict,
+    somatic_signals: Optional[dict] = None,
+    attention_weights: Optional[Dict[str, float]] = None,
+) -> List[Dict[str, Any]]:
     approach_boost, avoid_boost = _somatic_modulation(somatic_signals)
+    drive_attention = _compute_drive_attention(attention_weights)
 
     # 驱动力分组
     seek_drives = ["curiosity", "info_hunger", "loneliness_drive"]
@@ -243,6 +293,11 @@ def _suggest(dv: dict, params: dict, somatic_signals: Optional[dict] = None) -> 
                 priority *= approach_boost
             elif drive in avoid_drives:
                 priority *= avoid_boost
+
+            # 注意力调制：协方差追踪器发现的高相关维度 → 对应驱动力优先级加成
+            attn_boost = drive_attention.get(drive, 0.0)
+            if attn_boost > 0:
+                priority *= (1.0 + attn_boost)
 
             priority = round(max(0.05, min(1.0, priority)), 3)
             result.append({
@@ -266,19 +321,22 @@ def think(
     somatic_signals: Optional[dict] = None,
     entity_state: Optional[Any] = None,
     concept_tags: Optional[List[Any]] = None,
+    attention_weights: Optional[Dict[str, float]] = None,
 ) -> dict:
     """
     受限思考主入口。
 
     参数：
-        wm_context      : 世界模型上下文
-        drive_vector    : 驱动力向量
-        state_snapshot  : 实体状态快照（占位，当前未使用）
-        params          : 思考参数表
-        somatic_signals : 感质信号（v3 改造新增）
-                        — tone > 0 → approach 建议优先级放大
-                        — tone < 0 → avoid 建议优先级放大
-                        — 感受强度高 → 调制效果更显著
+        wm_context        : 世界模型上下文
+        drive_vector      : 驱动力向量
+        state_snapshot    : 实体状态快照（占位，当前未使用）
+        params            : 思考参数表
+        somatic_signals   : 感质信号（v3 改造新增）
+                          — tone > 0 → approach 建议优先级放大
+                          — tone < 0 → avoid 建议优先级放大
+                          — 感受强度高 → 调制效果更显著
+        attention_weights : 协方差追踪器输出的注意力权重（v4 分析齿轮新增）
+                          — 高权重维度对应的驱动力建议优先级加成
     """
     try:
         params = {**DEFAULT_PARAMS, **(params or {})}
@@ -311,8 +369,21 @@ def think(
             skip.add(_rid(rule))
             questions.append(_question(rule, dominant_drive))
 
-        # 感质调制建议生成
-        suggestions = _suggest(dv, params, somatic_signals)
+        # 感质调制 + 注意力调制建议生成
+        suggestions = _suggest(dv, params, somatic_signals, attention_weights)
+
+        # V4 心智模拟：对候选建议做内部"如果做 X 会怎样"的反事实推理
+        # 门控：analysis_willingness = tension × energy × (1-fatigue)
+        if suggestions and state_snapshot and entity_state is not None:
+            try:
+                from .mental_simulation import simulate_suggestions
+                wm_rules = getattr(entity_state, "wm_rules", [])
+                if wm_rules:
+                    suggestions = simulate_suggestions(
+                        suggestions, state_snapshot, wm_rules, entity=entity_state,
+                    )
+            except Exception:
+                pass  # 模拟失败不影响原有建议
 
         # 枝干联想检索（双通道记忆系统 v2.0）
         branch_memories = []

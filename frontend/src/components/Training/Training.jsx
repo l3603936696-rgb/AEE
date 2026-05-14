@@ -235,6 +235,31 @@ function Training({ xiaState }) {
             </div>
           </div>
         )}
+
+        {/* 模板学习状态 */}
+        <div className="vocab-section">
+          <h3 className="vocab-section-title">{t('train_templates')}</h3>
+          <div className="template-count">
+            {t('train_learned')}: <strong>{vocab.learned_template_count ?? 0}</strong>
+          </div>
+          <div className="runtime-templates">
+            <div className="template-count">
+              {t('train_runtime')}: <strong>{vocab.runtime_templates?.length ?? 0}</strong>
+            </div>
+            {(!vocab.runtime_templates || vocab.runtime_templates.length === 0) ? (
+              <div className="vocab-empty">{t('train_no_runtime')}</div>
+            ) : (
+              <div className="runtime-list">
+                {vocab.runtime_templates.map((tmpl, i) => (
+                  <div key={i} className="runtime-item">
+                    <span className="runtime-template">{tmpl.template}</span>
+                    <span className="runtime-born">tick {tmpl.born_tick}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

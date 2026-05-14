@@ -21,7 +21,7 @@ Sentence Composer — 句子组合模块（v1.0）
 import logging
 import math
 import random
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -629,43 +629,73 @@ def compose_sentence(
     anchor: str,
     state: Dict[str, float],
     connector: str = "",
-) -> str:
+    template_efficiency: Optional[Dict[int, float]] = None,
+    learned_weights: Optional[Dict[int, Dict[str, float]]] = None,
+    extra_templates: Optional[List[Dict]] = None,
+) -> Tuple[str, int]:
     """
     根据当前状态，从模板库中选择一个模板，填充锚点词，组合成完整短句。
 
     参数：
-        anchor    : 锚点词，如 "累"、"冷"、"好奇"
-        state     : 当前状态 dict，key 与 entity_state 字段一致
-        connector : 连接词（来自 connector_map 的语气开头词），可选
+        anchor              : 锚点词，如 "累"、"冷"、"好奇"
+        state               : 当前状态 dict，key 与 entity_state 字段一致
+        connector           : 连接词（来自 connector_map 的语气开头词），可选
+        template_efficiency : {template_idx: avg_efficiency} 历史模板消力效率
+        learned_weights     : {template_idx: {dim: weight}} 学习到的状态权重，
+                              来自 template_learner。与 score_fn 加法叠加。
+        extra_templates     : 运行时新生模板（进化产生），追加在 PATTERNS 之后
 
     返回：
-        完整的中文短句，如 "唉，好累啊……"
+        (sentence, template_idx) 元组：
+            sentence     : 完整的中文短句
+            template_idx : 选中模板的全局索引（PATTERNS + extra_templates）
 
     采样机制：
-        1. 对所有模板计算 score_fn(state) → 原始分数
-        2. softmax(temperature=0.4) 转为概率分布
-        3. 随机采样（不是取最高分）→ 保持表达多样性
-        4. 填充 {anchor} 占位符
-        5. connector 优先插入到句首（连接语气）
+        1. score_fn(state) → 内置分（种子模板有，进化模板无）
+        2. + learned_weights · state → 学习分
+        3. - _anchor_penalty → 语法惩罚
+        4. + template_efficiency → 历史效率加成
+        5. softmax(temperature=0.4) → 概率采样
     """
     if not anchor:
-        return ""
+        return ("", -1)
 
-    if not PATTERNS:
-        return anchor
+    all_templates = PATTERNS
+    if extra_templates:
+        all_templates = PATTERNS + extra_templates
+
+    if not all_templates:
+        return (anchor, -1)
 
     raw_scores = []
-    for p in PATTERNS:
-        try:
-            score = p["score_fn"](state)
-        except Exception:
+    for i, p in enumerate(all_templates):
+        # 内置评分（种子模板有 score_fn，进化模板为 None）
+        score_fn = p.get("score_fn")
+        if score_fn is not None:
+            try:
+                score = score_fn(state)
+            except Exception:
+                score = 0.0
+        else:
             score = 0.0
+
+        # 学习权重评分（加法叠加）
+        if learned_weights and i in learned_weights:
+            lw = learned_weights[i]
+            score += sum(w * state.get(dim, 0.0) for dim, w in lw.items())
+
+        # 语法惩罚
         pos = p.get("anchor_pos", "head")
         score -= _anchor_penalty(len(anchor), pos)
+
+        # 历史效率加成（最多 +0.5）
+        if template_efficiency and i in template_efficiency:
+            score += min(template_efficiency[i], 0.5)
+
         raw_scores.append(score)
 
     chosen_idx = _softmax_sample(raw_scores, temperature=0.4)
-    chosen = PATTERNS[chosen_idx]
+    chosen = all_templates[chosen_idx]
 
     template = chosen["template"]
     sentence = _fill_anchor(template, anchor)
@@ -674,15 +704,23 @@ def compose_sentence(
         if not sentence.startswith(connector):
             sentence = connector + sentence
 
-    return sentence
+    return (sentence, chosen_idx)
+
+
+# 强度前缀集合（来自 connector_map + word_warmup 变体）
+# "好" 不在此列表——它既是强度前缀又是常见词首（好奇、好看），
+# 误剥会破坏合法词。"好{anchor}啊" 模板的 "好" 由字符串重叠逻辑处理。
+_INTENSITY_PREFIXES = ("有点", "太", "挺", "很", "特别", "非常")
 
 
 def _fill_anchor(template: str, anchor: str) -> str:
-    """填充锚词到模板，自动去除插入点处的前后重叠。
+    """填充锚词到模板，自动去除插入点处的前后重叠和强度前缀冲突。
 
     "有点{anchor}" + "有点软" → "有点软"（前缀重叠）
     "心里{anchor}的" + "渴的"  → "心里渴的"（后缀重叠）
     "{anchor}……想试试" + "开心" → "开心……想试试"（无重叠，原样）
+    "有点{anchor}" + "挺饿"   → "有点饿"（强度前缀冲突，去掉 anchor 的前缀）
+    "好{anchor}啊" + "很累"   → "好累啊"（同上）
     """
     tag = "{anchor}"
     idx = template.find(tag)
@@ -691,6 +729,19 @@ def _fill_anchor(template: str, anchor: str) -> str:
 
     prefix = template[:idx]
     suffix = template[idx + len(tag):]
+
+    # 强度前缀冲突：模板已含强度表达（prefix 或 suffix），anchor 再带强度前缀 → 去掉 anchor 的
+    # "有点{anchor}" + "挺饿" → "有点饿"（prefix 冲突）
+    # "感觉{anchor}得很" + "很痒" → "感觉痒得很"（suffix 含 "很"，anchor 也以 "很" 开头）
+    _tmpl_has_intensity = (
+        any(prefix.endswith(p) for p in _INTENSITY_PREFIXES)
+        or any(p in suffix for p in _INTENSITY_PREFIXES)
+    ) if (prefix or suffix) else False
+    if _tmpl_has_intensity:
+        for p in _INTENSITY_PREFIXES:
+            if anchor.startswith(p) and len(anchor) > len(p):
+                anchor = anchor[len(p):]
+                break
 
     # 前缀重叠：prefix 末尾与 anchor 开头重合
     # 例如 prefix="有点", anchor="有点软" → overlap="有点" → 去掉 anchor 开头
@@ -813,10 +864,10 @@ if __name__ == "__main__":
         for i in range(5):
             anchor = random.choice(scene["anchors"])
             connector = random.choice(scene["connectors"])
-            sentence = compose_sentence(anchor, scene["state"], connector)
+            sentence, tmpl_idx = compose_sentence(anchor, scene["state"], connector)
             results.append(sentence)
             prefix = connector if connector else "   "
-            print(f"    [{i+1}] {prefix} {sentence}")
+            print(f"    [{i+1}] {prefix} {sentence}  (tmpl={tmpl_idx})")
         unique = len(set(results))
         status = "[OK random]" if unique > 1 else "[WARN same]"
         print(f"    {status} {unique}/5 unique sentences")

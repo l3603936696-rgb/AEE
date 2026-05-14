@@ -39,6 +39,7 @@ from ..action_system.types import XIAction
 from ..action_system.reach import read_response
 from ..daemon.ipc_client import IPCClient
 from ..inner_diary import write_diary_entry
+from ..thinking_system.covariance_tracker import CovarianceTracker
 
 
 logger = logging.getLogger(__name__)
@@ -165,12 +166,29 @@ class TickEngine:
         self._ipc_server = ipc_server
         self._llm_callable = llm_callable
         self._train_only = train_only
+        self._covariance_tracker: Optional[CovarianceTracker] = None
+        self._last_tension_total = 0.0
 
     @property
     def entity(self) -> EntityState:
         if self._entity is None:
             self._entity = get_entity_state()
         return self._entity
+
+    @property
+    def covariance_tracker(self) -> CovarianceTracker:
+        """懒加载协方差追踪器，首次访问时从 entity 恢复历史数据。"""
+        if self._covariance_tracker is None:
+            saved = getattr(self.entity, "_covariance_tracker_data", None)
+            if saved:
+                self._covariance_tracker = CovarianceTracker.from_dict(saved)
+                logger.info(
+                    f"[CovarianceTracker] restored {self._covariance_tracker.sample_count} samples"
+                )
+            else:
+                self._covariance_tracker = CovarianceTracker()
+                logger.info("[CovarianceTracker] initialized (empty)")
+        return self._covariance_tracker
 
     @property
     def tick_count(self) -> int:
@@ -302,6 +320,81 @@ class TickEngine:
                     daemon_mode=True,
                 )
             self._tick_count += 1
+
+            # ---- 协方差追踪器：记录本 tick 的状态 + 预测误差 ----
+            try:
+                _pe = float(getattr(self.entity, "_last_prediction_error", 0.0))
+                self.covariance_tracker.update(
+                    self.entity.to_state_snapshot(), _pe
+                )
+                self.entity._covariance_tracker_data = self.covariance_tracker.to_dict()
+                self.entity._attention_weights = self.covariance_tracker.get_attention_weights()
+            except Exception as _cov_err:
+                logger.debug(f"[CovarianceTracker] update skipped: {_cov_err}")
+
+            # ---- 风化系统：常规漂移（每 300 tick）----
+            if self._tick_count % 300 == 0 and self.covariance_tracker.sample_count >= 50:
+                try:
+                    from ..weathering.signal_bridge import correlations_to_drift_signals
+                    from ..weathering.drift import apply_drift_cycle
+                    from ..weathering.param_writer import write_drifted_params, read_current_params
+                    from ..weathering.registry import list_all as _list_driftable
+
+                    _correlations = self.covariance_tracker.get_correlations()
+                    if _correlations:
+                        _drift_signals = correlations_to_drift_signals(_correlations)
+                        if _drift_signals:
+                            _all_params = _list_driftable()
+                            _defaults = {p.path: p.baseline_default for p in _all_params}
+                            _current = read_current_params(
+                                [p.path for p in _all_params], _defaults
+                            )
+                            _drifted = apply_drift_cycle(
+                                _current, _drift_signals, self.entity.tick_index
+                            )
+                            if _drifted:
+                                write_drifted_params(_drifted)
+                                logger.debug(
+                                    f"[weathering] Normal drift applied: "
+                                    f"{len(_drifted)} params"
+                                )
+                except Exception as _drift_err:
+                    logger.debug(f"[weathering] Drift cycle skipped: {_drift_err}")
+
+            # ---- 风化系统：张力快照（每 600 tick）----
+            if self._tick_count % 600 == 0:
+                try:
+                    from ..observability import TensionSnapshot, emit_event
+                    from ..weathering.shattering import load_suppressed_tension
+                    from ..world_model_update.contradiction import detect_contradictions
+
+                    tension_data = load_suppressed_tension()
+
+                    # 矛盾检测
+                    _wm_rules = getattr(self.entity, "wm_rules", [])
+                    _contradiction_pairs = detect_contradictions(_wm_rules) if _wm_rules else []
+
+                    # 矛盾张力注入：累积矛盾强度的 5% 到对应 domain 的 suppressed_tension
+                    if _contradiction_pairs:
+                        from ..weathering.shattering import _save_suppressed_tension
+                        for cp in _contradiction_pairs:
+                            _cd = cp.get("domain", "general")
+                            tension_data[_cd] = tension_data.get(_cd, 0.0) + cp["strength"] * 0.05
+                        _save_suppressed_tension(tension_data)
+
+                    total_tension = sum(tension_data.values())
+                    self._last_tension_total = round(total_tension, 4)
+
+                    emit_event(TensionSnapshot(
+                        tick=self._tick_count,
+                        total_tension=self._last_tension_total,
+                        suppressed_tension=self._last_tension_total,
+                        active_contradictions=len(_contradiction_pairs),
+                        contradiction_pairs=_contradiction_pairs,
+                        parameter_drift_summary={},
+                    ))
+                except Exception as _ts_err:
+                    logger.debug(f"[weathering] TensionSnapshot emit skipped: {_ts_err}")
 
             # ---- 从管线结果中提取 emergent_behavior ----
             decision = result.get("decision", {})
@@ -507,4 +600,50 @@ class TickEngine:
             "boredom_futility": round(getattr(self.entity, "boredom_futility", 0.0), 3),
             # 语言系统摘要
             "unlocked_vocab_count": len(getattr(self.entity, "_unlocked_vocabulary", [])),
+            # 模板学习摘要
+            "template_learned_count": len(getattr(self.entity, "_template_learned_weights", {})),
+            "runtime_template_count": len(getattr(self.entity, "_runtime_templates", [])),
+            # 协方差追踪器
+            "covariance_samples": self.covariance_tracker.sample_count,
+            "attention_weights": self.covariance_tracker.get_attention_weights(),
+            # 模型惯性 / 人格核心
+            "personality_core": self._get_personality_core(),
+            # 维度维护成本（奥卡姆剃刀动力学）
+            "dimension_values": self._get_dimension_values(),
+            # 风化张力
+            "suppressed_tension": self._last_tension_total,
         }
+
+    def _get_dimension_values(self) -> dict:
+        """获取各追踪维度的净价值（奥卡姆剃刀动力学）。"""
+        try:
+            from ..world_model_update.dimension_cost import compute_dimension_values
+            wm_rules = getattr(self.entity, "wm_rules", [])
+            snapshots = getattr(self.entity, "snapshots", [])
+            if not wm_rules:
+                return {}
+            vals = compute_dimension_values(wm_rules, snapshots)
+            return {k: round(v, 4) for k, v in vals.items()}
+        except Exception:
+            return {}
+
+    def _get_personality_core(self) -> list:
+        """获取人格核心（沉没成本最高的规律 top 3）。"""
+        try:
+            from ..world_model_update.model_inertia import identify_personality_core
+            wm_rules = getattr(self.entity, "wm_rules", [])
+            if not wm_rules:
+                return []
+            from ..world_model_update.rules import Rule
+            rule_objs = []
+            for r in wm_rules:
+                if isinstance(r, Rule):
+                    rule_objs.append(r)
+                elif isinstance(r, dict):
+                    rule_objs.append(Rule.from_dict(r))
+            return [
+                {"id": rid, "inertia": round(inertia, 3)}
+                for rid, inertia in identify_personality_core(rule_objs, top_n=3)
+            ]
+        except Exception:
+            return []

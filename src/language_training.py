@@ -286,6 +286,7 @@ def match_anchor_expression(
             "second_score": second_score,
             "third_score": third_score,
             "cand_count": len(scored_candidates),
+            "opening_particle": _prefix if _prefix not in ("一直", "还是", "又", "") else "",
         }
     return _display
 
@@ -473,16 +474,26 @@ def run_language_training_tick(entity: EntityState, snapshot: dict, override_sta
     # ---- 句子组合：把锚点词套壳成完整短句 ----
     # 注意：_prefix 已在 match_anchor_expression 中加到 _display 里，
     # compose_sentence 的 connector 留空，避免重复前缀
+    _tmpl_idx = -1
     try:
         from .language_system.sentence_composer import compose_sentence
-        _composed = compose_sentence(
+        # 从 QuenchingTracker 获取历史模板效率
+        _te = {}
+        _q_tmp = getattr(entity, "_quenching", None)
+        if _q_tmp is not None:
+            _te = _q_tmp.get_template_efficiency()
+        _composed, _tmpl_idx = compose_sentence(
             best_candidate if best_candidate else "",
             _vr,
             connector="",
+            template_efficiency=_te,
+            learned_weights=getattr(entity, "_template_learned_weights", None),
+            extra_templates=getattr(entity, "_runtime_templates", None),
         )
     except Exception:
         _composed = _display if _display else best_candidate or ""
 
+    entity._last_template_idx = _tmpl_idx
     entity.tick += 1
     return {
         "vr_state": _vr,
@@ -493,6 +504,7 @@ def run_language_training_tick(entity: EntityState, snapshot: dict, override_sta
         "third": third_candidate,
         "display": _display,
         "composed": _composed,
+        "template_idx": _tmpl_idx,
         "cand_count": cand_count,
         "warm_count": len(_warm),
         "ms": elapsed,

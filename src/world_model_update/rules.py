@@ -138,6 +138,7 @@ class Rule:
     last_verified_at: float = 0.0
     last_decay_at: float = 0.0
     status: str = "active"
+    domain: str = "general"      # 规律所属认知域，例 "social.intimate", "work", "creative"
     context: str = ""
     predicts: Predicts = field(default_factory=Predicts)
     evidence: List[Evidence] = field(default_factory=list)
@@ -156,6 +157,7 @@ class Rule:
             "last_verified_at": round(self.last_verified_at, 2),
             "last_decay_at": round(self.last_decay_at, 2),
             "status": self.status,
+            "domain": self.domain,
             "context": self.context,
             "predicts": self.predicts.to_dict(),
             "evidence": [e.to_dict() for e in self.evidence],
@@ -192,6 +194,7 @@ class Rule:
                 last_verified_at=float(data.get("last_verified_at", now)),
                 last_decay_at=float(data.get("last_decay_at", now)),
                 status=str(data.get("status", "active")),
+                domain=str(data.get("domain", "general")),
                 context=str(data.get("context", "")),
                 predicts=predicts,
                 evidence=evidence_list,

@@ -20,6 +20,8 @@ from typing import Any, Dict, List
 
 from .defaults import get_raw_value
 from .rules import Rule
+from .model_inertia import compute_inertia, inertia_decay_factor
+from .dimension_cost import compute_dimension_values, dimension_decay_modifier
 
 
 # ============================================================================
@@ -150,6 +152,7 @@ def decay_rules(
     rules: List[Any],
     state_snapshot: Any,
     param_snapshot: Any,
+    snapshots: Any = None,
 ) -> List[Rule]:
     """
     衰减模块主入口。
@@ -160,6 +163,8 @@ def decay_rules(
                        必须传入"此刻"的新快照，不能使用循环开头缓存的旧快照。
                        期望字段：stress (0-1), fatigue (0-1)
         param_snapshot : 参数只读快照（来自 parameter_system）
+        snapshots      : 最近的 Snap 列表（含 prediction_error_map）
+                       用于计算维度维护成本。None 时跳过维度成本调节。
 
     返回：
         List[Rule] — 衰减后的规律列表
@@ -230,6 +235,14 @@ def decay_rules(
         # ---- 内分泌调节（全局，只需算一次）----
         endocrine_mult = _compute_endocrine_multiplier(stress, fatigue, base_rate, stress_mult)
 
+        # ---- 维度维护成本（奥卡姆剃刀动力学）----
+        dim_values = {}
+        if snapshots is not None:
+            try:
+                dim_values = compute_dimension_values(safe_rules, snapshots)
+            except Exception:
+                dim_values = {}
+
         now = time.time()
         result: List[Rule] = []
 
@@ -254,8 +267,15 @@ def decay_rules(
                 rule.stability_score, resistance_factor, base_rate
             )
 
-            # 最终衰减率 = base_rate × endocrine_mult × stability_resist
-            decay_rate = base_rate * endocrine_mult * stability_resist
+            # 模型惯性：沉没成本高的规律衰减更慢
+            inertia = compute_inertia(rule, safe_rules, now)
+            inertia_factor = inertia_decay_factor(inertia)
+
+            # 维度维护成本：追踪低价值维度的规律衰减更快
+            dim_modifier = dimension_decay_modifier(rule, dim_values) if dim_values else 1.0
+
+            # 最终衰减率 = base_rate × endocrine_mult × stability_resist × inertia × dim_cost
+            decay_rate = base_rate * endocrine_mult * stability_resist * inertia_factor * dim_modifier
 
             # 贝叶斯平滑目标
             bayesian_smoothed = _compute_bayesian_smoothing(

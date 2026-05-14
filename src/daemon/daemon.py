@@ -337,7 +337,7 @@ class HTTPServer:
                         from urllib.parse import urlparse, parse_qs
                         parsed = urlparse(self.path)
                         params = parse_qs(parsed.query)
-                        filename = params.get('file', ['daemon.log'])[0]
+                        filename = params.get('file', ['daemon_live.log'])[0]
                         limit = int(params.get('limit', ['200'])[0])
                         from pathlib import Path
                         logs_dir = Path(__file__).parent.parent.parent / "logs"
