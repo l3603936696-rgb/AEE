@@ -5,10 +5,55 @@
 
 from .entity_state import EntityState
 
+from .language_system.somatic_concept_map import SOMATIC_ANCHORS
+
+import math
 import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+# ---- 静息基线 ----
+# 维度的平衡态参考值，来自 entity 的初始状态 / 长期均值。
+# 锚点匹配计算的是"状态偏离这个基线多远，方向是否与锚点一致"。
+_ANCHOR_BASELINE = {
+    "somatic_tone": 0.0, "energy": 0.8, "fatigue": 0.1, "stress": 0.1,
+    "boredom": 0.2, "loneliness": 0.3, "loneliness_core": 0.2,
+    "loneliness_surface": 0.1, "pain": 0.0, "avoid_drive": 0.0,
+    "approach_drive": 0.0, "approach_explore": 0.0, "approach_social": 0.0,
+    "approach_urgency": 0.0, "danger_level": 0.0, "fear": 0.0,
+    "anxiety": 0.0, "unresolved": 0.2, "info_gap": 0.5,
+    "relief_debt": 0.0, "boredom_despair": 0.0, "boredom_futility": 0.0,
+    "sadness": 0.0, "joy": 0.0, "serenity": 0.0,
+    "disgust": 0.0, "excitement": 0.0,
+    "curiosity": 0.5, "prediction_error": 0.5,
+}
+
+
+def _anchor_alignment(state: dict, profile: dict) -> float:
+    """
+    连续锚点对齐度：state 偏离 baseline 与 profile delta 的方向一致性。
+
+    每个维度: sigmoid(deviation * delta / delta²)
+      deviation 与 delta 同向 → > 0.5（匹配）
+      deviation 与 delta 反向 → < 0.5（不匹配）
+      deviation = 0（在基线上）→ = 0.5（中性）
+
+    分母 delta² 让 sigmoid 的尺度由 delta 自身决定——无外部常数。
+    返回所有维度的平均对齐度 [0, 1]。
+    """
+    _total = 0.0
+    _count = 0
+    for _dim, _delta in profile.items():
+        _cur = state.get(_dim, _ANCHOR_BASELINE.get(_dim, 0.5))
+        _base = _ANCHOR_BASELINE.get(_dim, 0.5)
+        _deviation = _cur - _base
+        _ratio = _deviation * _delta / max(_delta * _delta, 0.001)
+        # clamp 防溢出，不影响结果（sigmoid 在 ±20 已饱和）
+        _total += 1.0 / (1.0 + math.exp(max(-20.0, min(20.0, -_ratio))))
+        _count += 1
+    return _total / max(_count, 1)
 
 
 def match_anchor_expression(
@@ -32,47 +77,38 @@ def match_anchor_expression(
 
     _empty = lambda: {"text": "", "best_word": None, "second_word": None, "best_score": 0.0} if return_details else ""
 
-    # ---- 锚点直接匹配：baseline-aware 阈值 ----
-    _BASELINE = {
-        "somatic_tone": 0.0, "energy": 0.8, "fatigue": 0.1, "stress": 0.1,
-        "boredom": 0.2, "loneliness": 0.3, "loneliness_core": 0.2,
-        "loneliness_surface": 0.1, "pain": 0.0, "avoid_drive": 0.0,
-        "approach_drive": 0.0, "approach_explore": 0.0, "approach_social": 0.0,
-        "approach_urgency": 0.0, "danger_level": 0.0, "fear": 0.0,
-        "anxiety": 0.0, "unresolved": 0.2, "info_gap": 0.5,
-        "relief_debt": 0.0, "boredom_despair": 0.0, "boredom_futility": 0.0,
-        "sadness": 0.0, "joy": 0.0, "serenity": 0.0,
-        "disgust": 0.0, "excitement": 0.0,
-        "curiosity": 0.5, "prediction_error": 0.5,
-    }
+    # ---- 锚点直接匹配：连续对齐度（sigmoid dot-product）----
     scored_candidates = []
     _anchor_matches = {}
     try:
         from .language_system.somatic_concept_map import SOMATIC_ANCHORS
         for _word, _anchor in SOMATIC_ANCHORS.items():
-            _ok = 0
-            for _dim, _delta in _anchor.items():
-                _cur = state.get(_dim)
-                _base = _BASELINE.get(_dim, 0.5)
-                if _cur is None:
-                    _cur = _base
-                if _delta > 0.01:
-                    if _cur >= _base + _delta * 0.5:
-                        _ok += 1
-                elif _delta < -0.01:
-                    if _cur <= _base + _delta * 0.5:
-                        _ok += 1
-                else:
-                    _ok += 1
-            _match = _ok / len(_anchor)
-            _score = _match
-            if _score > 0.3:
-                _anchor_matches[_word] = _match
-                _sharpness = sum(abs(d) for d in _anchor.values())
-                scored_candidates.append((_word, _score, _sharpness))
+            _match = _anchor_alignment(state, _anchor)
+            _anchor_matches[_word] = _match
+            _sharpness = sum(abs(d) for d in _anchor.values())
+            scored_candidates.append((_word, _match, _sharpness))
         scored_candidates.sort(key=lambda x: (x[1], x[2]), reverse=True)
     except Exception as e:
         return _empty()
+
+    # ---- warm_words 注入：老师教的新词参与选词竞争 ----
+    _WARM_DISCOUNT = 0.6
+    if entity:
+        _warm = getattr(entity, "_warm_words", None)
+        if isinstance(_warm, dict):
+            _existing = {c[0] for c in scored_candidates}
+            for _ww, _winfo in _warm.items():
+                if _ww in _existing:
+                    continue
+                _prof = _winfo.get("profile") if isinstance(_winfo, dict) else None
+                if not _prof or not isinstance(_prof, dict):
+                    continue
+                _match = _anchor_alignment(state, _prof)
+                _score = _match * _WARM_DISCOUNT
+                _anchor_matches[_ww] = _match
+                _sharpness = sum(abs(d) for d in _prof.values())
+                scored_candidates.append((_ww, _score, _sharpness))
+            scored_candidates.sort(key=lambda x: (x[1], x[2]), reverse=True)
 
     # ---- 热身注入 ----
     if entity:
@@ -81,8 +117,30 @@ def match_anchor_expression(
             scored_candidates = inject_warmup_candidates(
                 entity, scored_candidates, min_hits=3, min_best_efficiency=0.15,
                 anchor_scores=_anchor_matches)
+            # warmup 返回 2-元组 (word, score)，归一化为 3-元组 (word, score, sharpness)
+            scored_candidates = [
+                (t[0], t[1], t[2] if len(t) > 2 else 0.0)
+                for t in scored_candidates
+            ]
         except Exception:
             pass
+
+    # ---- 语言系统候选词注入：阅读词等学到的词进入锚点竞争池 ----
+    # scored_candidates 里的阅读词必须能走锚点路径出来，否则永远没有输出通道
+    _LANG_DISCOUNT = 0.85
+    if entity:
+        _lang_cands = getattr(entity, "_language_candidates", None)
+        _lang_best = getattr(entity, "_language_best_candidate", None)
+        _lang_score_map = getattr(entity, "_language_candidate_scores", {})
+        if _lang_cands:
+            _existing_anchor_words = {c[0] for c in scored_candidates}
+            for _lc in _lang_cands:
+                if _lc in _existing_anchor_words:
+                    continue
+                _ls = _lang_score_map.get(_lc, 0.20)
+                _sharpness = 0.5
+                scored_candidates.append((_lc, _ls * _LANG_DISCOUNT, _sharpness))
+            scored_candidates.sort(key=lambda x: (x[1], x[2]), reverse=True)
 
     # ---- 去重 ----
     seen = set()
@@ -476,19 +534,37 @@ def run_language_training_tick(entity: EntityState, snapshot: dict, override_sta
     # compose_sentence 的 connector 留空，避免重复前缀
     _tmpl_idx = -1
     try:
-        from .language_system.sentence_composer import compose_sentence
-        # 从 QuenchingTracker 获取历史模板效率
+        from .language_system.sentence_composer import compose_sentence, PATTERNS
+        # 从 QuenchingTracker 获取历史模板效率（含贝叶斯先验）
         _te = {}
         _q_tmp = getattr(entity, "_quenching", None)
         if _q_tmp is not None:
-            _te = _q_tmp.get_template_efficiency()
+            _te = _q_tmp.get_template_efficiency(seed_count=len(PATTERNS))
+        # 合并 extra_templates：runtime + CxG 构式候选
+        _extra = list(getattr(entity, "_runtime_templates", None) or [])
+        try:
+            _cxg = getattr(entity, "_cxg_learner", None)
+            if _cxg is not None:
+                _rcxg = getattr(entity, "_recursive_gen", None)
+                _al = list(getattr(entity, "_unlocked_vocabulary", []))[:20]
+                _cxg_cands = _cxg.generate_candidates(
+                    best_candidate or "", _vr,
+                    second_anchor=second_candidate or "",
+                    recursive_generator=_rcxg,
+                    anchor_words=_al,
+                    action_context=getattr(entity, "_current_action", "") or "",
+                )
+                _extra.extend(_cxg_cands)
+        except Exception:
+            pass
         _composed, _tmpl_idx = compose_sentence(
             best_candidate if best_candidate else "",
             _vr,
             connector="",
             template_efficiency=_te,
             learned_weights=getattr(entity, "_template_learned_weights", None),
-            extra_templates=getattr(entity, "_runtime_templates", None),
+            extra_templates=_extra or None,
+            second_anchor=second_candidate,
         )
     except Exception:
         _composed = _display if _display else best_candidate or ""

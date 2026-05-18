@@ -64,14 +64,15 @@ class IPCServer:
     - Windows: TCP Socket (127.0.0.1:8766)
     """
 
-    def __init__(self, tick_engine: TickEngine, llm_callable=None) -> None:
+    def __init__(self, tick_engine: TickEngine, llm_callable=None, ipc_port: int = IPC_TCP_PORT) -> None:
         self._tick_engine = tick_engine
         self._llm_callable = llm_callable
         self._server_sock: Optional[socket.socket] = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._is_windows = sys.platform == "win32"
-        self._listen_addr = f"127.0.0.1:{IPC_TCP_PORT}" if self._is_windows else str(SOCKET_PATH)
+        self._ipc_port = ipc_port
+        self._listen_addr = f"127.0.0.1:{ipc_port}" if self._is_windows else str(SOCKET_PATH)
 
     def start(self) -> None:
         """启动 IPC 服务器（在后台线程中运行）"""
@@ -82,7 +83,7 @@ class IPCServer:
             # Windows: TCP Socket
             self._server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self._server_sock.bind(("127.0.0.1", IPC_TCP_PORT))
+            self._server_sock.bind(("127.0.0.1", self._ipc_port))
         else:
             # Unix: Unix Domain Socket — WSL 下可能不支持，fallback 到 TCP
             try:
@@ -93,11 +94,11 @@ class IPCServer:
                 self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 self._server_sock.bind(str(SOCKET_PATH))
             except OSError:
-                logger.warning(f"[IPCServer] AF_UNIX 不可用，fallback 到 TCP {IPC_TCP_PORT}")
+                logger.warning(f"[IPCServer] AF_UNIX 不可用，fallback 到 TCP {self._ipc_port}")
                 self._server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                self._server_sock.bind(("127.0.0.1", IPC_TCP_PORT))
-                self._listen_addr = f"127.0.0.1:{IPC_TCP_PORT}"
+                self._server_sock.bind(("127.0.0.1", self._ipc_port))
+                self._listen_addr = f"127.0.0.1:{self._ipc_port}"
 
         self._server_sock.listen(5)
         self._running = True
@@ -387,13 +388,22 @@ class HTTPServer:
                             w: round(sum(v) / len(v), 3)
                             for w, v in efficiency.items() if v
                         }
+                        tl_data = getattr(entity, "_template_learner_data", {})
+                        learned_weights = tl_data.get("learned_weights", {}) if isinstance(tl_data, dict) else {}
+                        runtime_templates = [
+                            {"template": t.get("template", ""), "born_tick": t.get("born_tick", -1)}
+                            for t in (tl_data.get("runtime_templates", []) if isinstance(tl_data, dict) else [])
+                        ]
                         self.send_response(200)
                         self.send_header('Content-Type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', '*')
                         self.end_headers()
                         self.wfile.write(json.dumps({
                             "unlocked": unlocked,
                             "cluster_weights": cluster_weights,
                             "word_efficiency": word_stats,
+                            "learned_template_count": len(learned_weights),
+                            "runtime_templates": runtime_templates,
                         }, ensure_ascii=False).encode('utf-8'))
                     except Exception as e:
                         self.send_response(500)
@@ -440,7 +450,7 @@ class HTTPServer:
 # Daemon 主入口
 # ============================================================================
 
-def run_daemon(tick_interval: float = 30.0, http_port: int = 8765, train_only: bool = False) -> None:
+def run_daemon(tick_interval: float = 30.0, http_port: int = 8765, ipc_port: int = 8766, train_only: bool = False) -> None:
     """
     启动 XIA 长期记忆服务。
 
@@ -475,7 +485,7 @@ def run_daemon(tick_interval: float = 30.0, http_port: int = 8765, train_only: b
     llm_callable = create_llm_callable()
 
     # 初始化组件
-    ipc_server = IPCServer(tick_engine=None, llm_callable=llm_callable)
+    ipc_server = IPCServer(tick_engine=None, llm_callable=llm_callable, ipc_port=ipc_port)
     tick_engine = TickEngine(tick_interval=tick_interval, entity_state=entity, ipc_server=ipc_server, llm_callable=llm_callable, train_only=train_only)
     ipc_server._tick_engine = tick_engine
 
@@ -535,6 +545,12 @@ if __name__ == "__main__":
         help="HTTP API 端口（供 Windows 前端访问），默认 8765",
     )
     parser.add_argument(
+        "--ipc-port",
+        type=int,
+        default=8766,
+        help="IPC TCP 端口（Windows），默认 8766",
+    )
+    parser.add_argument(
         "--train-only",
         action="store_true",
         default=False,
@@ -542,4 +558,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    run_daemon(tick_interval=args.tick_interval, http_port=args.http_port, train_only=args.train_only)
+    run_daemon(tick_interval=args.tick_interval, http_port=args.http_port, ipc_port=args.ipc_port, train_only=args.train_only)

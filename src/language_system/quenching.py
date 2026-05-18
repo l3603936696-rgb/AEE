@@ -170,15 +170,30 @@ class QuenchingTracker:
         return [r for r in self._history if r.drive_state_hash == state_hash]
 
     # -------------------------------------------------------------------------
-    # 模板效率（v11.6: 供 compose_sentence 学习）
+    # 模板效率（v11.6: 供 compose_sentence 学习；v12 贝叶斯先验）
     # -------------------------------------------------------------------------
 
-    def get_template_efficiency(self, recent_n: int = 200) -> Dict[int, float]:
-        """
-        返回最近 N 条记录中，每个 template_idx 的平均消力效率。
+    # 种子模板先验（Beta 分布伪计数）
+    # 相当于：种子模板历史上"被用过" _PSEUDO_N 次、平均效率 _PSEUDO_M
+    # 新模板上来只有真实记录，两者合并后——记录少时先验托底，记录多时后验主导
+    _PSEUDO_N: float = 3.0
+    _PSEUDO_M: float = 0.10   # 先验均值 = 0.10（中性偏低，表示"默认模板只是候选"）
 
-        返回：
-            {template_idx: avg_efficiency} — 只包含 idx >= 0 的记录
+    def get_template_efficiency(
+        self,
+        recent_n: int = 200,
+        seed_count: int = 0,
+    ) -> Dict[int, float]:
+        """
+        返回每个模板的平均消力效率（含贝叶斯先验）。
+
+        PATTERNS（seed_count 个）使用 Beta 先验：
+            posterior_mean = (_PSEUDO_N*_PSEUDO_M + n*avg) / (_PSEUDO_N + n)
+        运行时模板（idx >= seed_count）无先验，直接用真实均值。
+
+        参数：
+            recent_n   : 统计窗口
+            seed_count : 种子模板数量（PATTERNS 长度）
         """
         sums: Dict[int, float] = {}
         counts: Dict[int, int] = {}
@@ -188,18 +203,30 @@ class QuenchingTracker:
                 continue
             sums[idx] = sums.get(idx, 0.0) + r.quenching_efficiency
             counts[idx] = counts.get(idx, 0) + 1
-        return {
-            idx: sums[idx] / counts[idx]
-            for idx in sums
-            if counts[idx] > 0
-        }
 
-    def get_template_stats(self, recent_n: int = 200) -> Dict[int, Tuple[float, int]]:
+        result: Dict[int, float] = {}
+        for idx, total in sums.items():
+            avg = total / counts[idx]
+            if idx < seed_count:
+                # 种子模板：Beta 先验 + 真实数据合并
+                eff = (
+                    self._PSEUDO_N * self._PSEUDO_M + counts[idx] * avg
+                ) / (self._PSEUDO_N + counts[idx])
+                result[idx] = eff
+            else:
+                result[idx] = avg
+        return result
+
+    def get_template_stats(
+        self,
+        recent_n: int = 200,
+        seed_count: int = 0,
+    ) -> Dict[int, Tuple[float, int]]:
         """
-        返回最近 N 条记录中，每个 template_idx 的 (平均效率, 记录数)。
+        返回每个模板的 (平均效率, 记录数)。
 
-        返回：
-            {template_idx: (avg_efficiency, count)} — 只包含 idx >= 0 的记录
+        种子模板返回合并先验后的均值和 (真实计数 + 伪计数)，
+        运行时模板返回真实值。
         """
         sums: Dict[int, float] = {}
         counts: Dict[int, int] = {}
@@ -209,11 +236,57 @@ class QuenchingTracker:
                 continue
             sums[idx] = sums.get(idx, 0.0) + r.quenching_efficiency
             counts[idx] = counts.get(idx, 0) + 1
-        return {
-            idx: (sums[idx] / counts[idx], counts[idx])
-            for idx in sums
-            if counts[idx] > 0
-        }
+
+        result: Dict[int, Tuple[float, int]] = {}
+        for idx, total in sums.items():
+            avg = total / counts[idx]
+            if idx < seed_count:
+                eff = (
+                    self._PSEUDO_N * self._PSEUDO_M + counts[idx] * avg
+                ) / (self._PSEUDO_N + counts[idx])
+                # 记录数含伪计数——供 try_spawn_template 的门槛判断
+                result[idx] = (eff, counts[idx] + int(self._PSEUDO_N))
+            else:
+                result[idx] = (avg, counts[idx])
+        return result
+
+    # -------------------------------------------------------------------------
+    # 重复表达递减
+    # -------------------------------------------------------------------------
+
+    def get_repetition_discount(
+        self, expression: str, current_tick: int, params: dict,
+    ) -> float:
+        """
+        计算某个表达的重复折扣系数（0~1，1=无折扣）。
+
+        在时间窗口内每使用一次，折扣 *= (1 - decay_per_use)。
+        距上次使用越久，折扣自然恢复（recovery_rate/tick）。
+
+        参数 params 从 entity._repetition_decay_params 传入。
+        """
+        decay_per_use = params.get("decay_per_use", 0.15)
+        recovery_rate = params.get("recovery_rate", 0.02)
+        floor = params.get("floor", 0.20)
+        window_ticks = params.get("window_ticks", 200)
+
+        uses = []
+        for r in self._history:
+            if r.expression == expression and (current_tick - r.tick) <= window_ticks:
+                uses.append(r.tick)
+
+        if not uses:
+            return 1.0
+
+        # 每次使用叠加衰减，越近的使用衰减越强
+        discount = 1.0
+        for use_tick in uses:
+            ticks_ago = max(1, current_tick - use_tick)
+            recovered = min(1.0, ticks_ago * recovery_rate)
+            this_decay = decay_per_use * (1.0 - recovered)
+            discount *= (1.0 - this_decay)
+
+        return max(floor, discount)
 
     # -------------------------------------------------------------------------
     # SNR（信噪比）

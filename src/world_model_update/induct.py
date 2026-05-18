@@ -268,12 +268,17 @@ def induct_rules(
                 continue
 
             # ---- 计算实际 delta ----
-            pre = _extract_state(snap.pre_state)
-            post = _extract_state(snap.post_state)
-            actual_deltas = {
-                f: post.get(f, 0.0) - pre.get(f, 0.0)
-                for f in STATE_FIELD_WHITELIST
-            }
+            # 用 pre/post 的全部数值字段（不仅限白名单）
+            # 因为 prediction_error_map 可能包含白名单外的字段
+            pre = snap.pre_state if isinstance(snap.pre_state, dict) else {}
+            post = snap.post_state if isinstance(snap.post_state, dict) else {}
+            all_fields = set(pre.keys()) | set(post.keys())
+            actual_deltas = {}
+            for f in all_fields:
+                try:
+                    actual_deltas[f] = float(post.get(f, 0.0)) - float(pre.get(f, 0.0))
+                except (TypeError, ValueError):
+                    pass
 
             # ---- 找显著预测误差的字段 ----
             significant = [

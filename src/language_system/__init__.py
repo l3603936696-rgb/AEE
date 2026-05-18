@@ -50,6 +50,7 @@ from .connector_map import (
     score_suffix_particle,
     sample_suffix_particle,
 )
+from .construction_grammar import ConstructionLearner
 
 __all__ = [
     "QuenchingTracker",
@@ -75,4 +76,5 @@ __all__ = [
     "sample_opening_particle",
     "score_suffix_particle",
     "sample_suffix_particle",
+    "ConstructionLearner",
 ]

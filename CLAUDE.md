@@ -63,6 +63,29 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. No If-Else, No Hardcode
+
+**All control flow must be continuous. Hardcoded constants need explicit discussion.**
+
+### No if-else structures
+
+- No `if`/`elif`/`else` branching for logic decisions
+- No `and`/`or` short-circuit to choose between values (use `max`/`min` or weighted functions)
+- No ternary `x if condition else y`
+- No comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`) to gate behavior
+- **Allowed**: dictionary dispatch tables, softmax over score functions, continuous衰减 functions (e.g. `exp(-x)`, `clamp(x, 0, 1)`)
+- **Allowed**: `try`/`except` for actual error handling (not logic branching)
+
+### Hardcoded constants need discussion
+
+- Magic numbers, fixed strings, fixed coefficients, fixed thresholds — all hardcoded values must be extracted to a named constant and discussed before use
+- Do not invent constants without reason. If a constant is needed, ask: "Where does this value come from?"
+
+**Refactor if-else to continuous form:**
+- `if x > threshold: result = a else: result = b` → `result = a * sigmoid(x - threshold) + b * (1 - sigmoid(...))` or similar
+- `if flag: do_x()` → `delta_x *= flag` (continuous 0/1 signal)
+- `if len(word) < 3: score = 0 else: score = base` → `score = base * exp(-max(0.0, 3 - len(word)))`
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

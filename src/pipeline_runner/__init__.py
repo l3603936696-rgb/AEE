@@ -70,7 +70,7 @@ from ..memory_hub import (
 from ..memory_hub.insula_hub import compute_somatic_signals as _compute_somatic_signals
 from ..core import emerge_behavior as _emerge_behavior, build_system_prompt as _build_system_prompt, derive_rendering_params as _derive_rendering_params
 from ..core.action_dispatcher import dispatch_async_action as _dispatch_async_action, select_primitive_candidate as _select_primitive_candidate
-from ..entity_state import EntityState, PipelineTrace, get_entity_state, force_set_state, ENTITY_CORE_PATH, DATA_DIR, _compute_prediction_error_map, _apply_silence_injection, _recover_from_episodes, _interpolate_lookup
+from ..entity_state import EntityState, PipelineTrace, get_entity_state, force_set_state, ENTITY_CORE_PATH, DATA_DIR, _compute_prediction_error_map, _apply_silence_injection, _recover_from_episodes, _interpolate_lookup, _make_core_wrapper
 from ..core.entity_core import EntityCore
 
 
@@ -141,6 +141,37 @@ from ..behavior_profiler import BehaviorProfiler
 
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# 语言训练降级：启发式默认候选
+# ============================================================================
+
+def _make_fallback_candidates(state: Dict[str, float]) -> List[str]:
+    """根据驱动力场从体感词典中抽取最相关候选词。
+
+    v3.2: 替换硬编码 12 词 → 240+ 词的体感词典。
+    用粗略方向匹配做第一轮粗筛，BGE 再做精确打分。
+    v11.1: 不混入功能词——功能词走输出层辅线附赠，不参与 BGE 竞争。
+    """
+    candidates = []
+
+    try:
+        from ..language_system.somatic_dictionary import get_words_matching_state
+        matches = get_words_matching_state(state, top_k=8, min_similarity=0.15)
+        if matches:
+            candidates = [w for w, _, _ in matches]
+        return candidates[:16]  # 上限 16 个候选
+    except Exception:
+        pass
+
+    # 词典加载失败时的硬兜底
+    avoid = float(state.get("avoid_drive", state.get("avoid", 0.3)))
+    if avoid > 0.7:
+        return ["嗯", "……", "不知道", "算了"]
+    elif avoid > 0.5:
+        return ["嗯", "哦", "不知道", "也许"]
+    return ["嗯", "哦", "好"]
 
 
 # ============================================================================
@@ -331,6 +362,55 @@ def run_pipeline(
         semantic_raw = {"emotion": 0.0, "intent": "闲聊", "intensity": 0.3, "anchors": [], "intent_confidence": 0.8}
         semantic_packet = semantic_raw
         _trace("semantic", False, semantic_packet, str(e))
+
+    # ---- Step 2a: 构式解析（她自己的"耳朵"）----
+    # 用她学过的构式 + 词汇反向解析输入，产生驱动力变化
+    _cx_parse_result: Dict[str, Any] = {}
+    if raw_input and str(raw_input).strip():
+        try:
+            from ..language_system.construction_parser import parse_input as _cx_parse
+            _cx_parse_result = _cx_parse(str(raw_input), entity)
+            # 把解析结果注入 semantic_packet（供下游使用）
+            semantic_packet["cx_comprehension"] = _cx_parse_result.get("comprehension", 0.0)
+            semantic_packet["cx_social_intent"] = _cx_parse_result.get("social_intent", "unknown")
+            semantic_packet["cx_construction_match"] = _cx_parse_result.get("construction_match", "")
+            # 核心效果：把驱动力变化应用到 entity 状态
+            _cx_delta = _cx_parse_result.get("drive_delta", {})
+            for _dim, _val in _cx_delta.items():
+                _old = getattr(entity, _dim, None)
+                if _old is not None and isinstance(_old, (int, float)):
+                    setattr(entity, _dim, max(0.0, min(1.0, float(_old) + _val)))
+            _trace("cx_parse", True, {
+                "comprehension": _cx_parse_result.get("comprehension", 0.0),
+                "social_intent": _cx_parse_result.get("social_intent", "unknown"),
+                "drive_delta_dims": list(_cx_delta.keys()),
+            })
+        except Exception as e:
+            _trace("cx_parse", False, {}, str(e))
+
+    # ---- Step 2b: 词汇习得（v1.0）----
+    if raw_input and str(raw_input).strip() and _cx_parse_result:
+        try:
+            from ..language_system.vocabulary_acquisition import (
+                try_acquire_words_sync, decay_exposure,
+            )
+            _acq_comp = _cx_parse_result.get("comprehension", 0.0)
+            _acquired = try_acquire_words_sync(
+                str(raw_input), entity, _acq_comp, llm_callable,
+            )
+            if _acquired:
+                _trace("vocab_acquire", True, {"acquired": _acquired})
+            decay_exposure(entity)
+        except Exception as e:
+            _trace("vocab_acquire", False, {}, str(e))
+
+    # ---- Step 2c: 从输入中学习构式（v1.0）----
+    if raw_input and str(raw_input).strip() and _cx_parse_result:
+        try:
+            from ..language_system.construction_parser import learn_constructions_from_input
+            learn_constructions_from_input(str(raw_input), entity, _cx_parse_result)
+        except Exception:
+            pass
 
     # ---- 顶撞权检查（Step 2 后：semantic_packet 已定义）----
     user_intent_from_input: Dict[str, Any] = {}
@@ -561,6 +641,41 @@ def run_pipeline(
         thought_packet = {"suggestions": [], "questions": []}
         _trace("think", False, thought_packet, str(e))
 
+    # ---- Step 7.5: 问题缓冲（思考产出的结构化问题 → 暂存）----
+    # 问题是结构化数据（type/dims/priority），不是文字。
+    # 张力注入推迟到 writeback 之后（Step 12 后），避免被 update_state 覆盖。
+    # 这里只做：存入 _pending_questions 缓冲 + 记录最高优先级。
+    _question_tension = 0.0  # 延迟注入
+    _ur_before_quench = None  # 消力前的 unresolved（L3b 用）
+    _ur_after_quench = None  # 消力后、问题张力前的 unresolved（L3b 用）
+    try:
+        _questions = thought_packet.get("questions", [])
+        if _questions:
+            _top_q = max(_questions, key=lambda q: q.get("priority", 0.0))
+            _q_priority = float(_top_q.get("priority", 0.0))
+            _question_tension = _q_priority * 0.1  # 稍后注入
+
+            # 存入待解决问题缓冲（结构化数据，最多 5 条）
+            _pending = getattr(entity, "_pending_questions", [])
+            _pending.append({
+                "type": _top_q.get("type", ""),
+                "rule_id": _top_q.get("rule_id", ""),
+                "dims": _top_q.get("dims", []),
+                "confidence_at_ask": _top_q.get("confidence", 0.0),
+                "priority": _q_priority,
+                "tick": entity.tick,
+            })
+            entity._pending_questions = _pending[-5:]
+
+            _trace("question_feedback", True, {
+                "type": _top_q.get("type", ""),
+                "dims": _top_q.get("dims", [])[:3],
+                "tension_deferred": round(_question_tension, 3),
+                "pending_count": len(entity._pending_questions),
+            })
+    except Exception as e:
+        _trace("question_feedback", False, {}, str(e))
+
     # =========================================================================
     # [接入点 2] Step 7 后：情绪衰减（thinking_system 后）
     # =========================================================================
@@ -655,16 +770,6 @@ def run_pipeline(
         })
     except Exception as e:
         _trace("boredom_activation", False, {}, str(e))
-
-    # ---- Step 7.8: Loneliness → approach_social 直接推力（v11）----
-    # context_awareness 在 daemon 模式下 emotion=0 不触发，直接在这里加
-    try:
-        _lon = entity.loneliness
-        if _lon > 0.2:
-            _social_push = (_lon - 0.2) * 0.08
-            entity.adjust("approach_social", _social_push)
-    except Exception:
-        pass
 
     # ---- Step 7.9: 自适应蒙特卡洛训练随机化（v11.1）----
     # daemon 模式常驻：对核心状态维度施加自适应高斯游走，
@@ -900,13 +1005,16 @@ def run_pipeline(
     # ---- Step 7.12: unresolved → 内省模式（v11.1）----
     # approach ∧ avoid 同时高 → 冲突 → 转向内部
     try:
+        _cuw = getattr(entity, "_conflict_to_unresolved_weights", {})
         _conflict = min(entity.approach_drive, entity.avoid_drive)
-        _unresolved_delta = _conflict * 0.04
+        _unresolved_delta = _conflict * _cuw.get("conflict_rate", 0.04)
         if _unresolved_delta > 0.001:
             entity.adjust("unresolved", _unresolved_delta)
-        entity.unresolved = max(0.0, entity.unresolved * 0.98)  # 缓慢衰减
-        # 内省：外部感知增益降低
-        _external_gain = 1.0 / (1.0 + entity.unresolved * 1.5)
+        # 衰减向 baseline（0.05）而非 0——意识体永远有一点未解之惑
+        _ur_baseline = 0.05
+        _ur_decay = _cuw.get("unresolved_decay", 0.98)
+        entity.unresolved = _ur_baseline + (entity.unresolved - _ur_baseline) * _ur_decay
+        _external_gain = 1.0 / (1.0 + entity.unresolved * _cuw.get("introspection_gain", 1.5))
         _current_dampen = getattr(entity, "_perception_dampen", 1.0)
         entity._perception_dampen = _current_dampen * _external_gain
         if entity.tick % 20 == 0 and entity.unresolved > 0.4:
@@ -984,10 +1092,11 @@ def run_pipeline(
 
     # ---- Step 8.0a: 子驱动力合成 approach_drive（v11）----
     try:
+        _asw = getattr(entity, "_approach_synthesis_weights", {})
         entity.approach_drive = (
-            0.40 * entity.approach_social +
-            0.35 * entity.approach_explore +
-            0.25 * entity.approach_urgency
+            _asw.get("social", 0.40) * entity.approach_social +
+            _asw.get("explore", 0.35) * entity.approach_explore +
+            _asw.get("urgency", 0.25) * entity.approach_urgency
         )
         entity.approach_drive = max(0.0, min(1.0, entity.approach_drive))
     except Exception as e:
@@ -1076,21 +1185,16 @@ def run_pipeline(
         _disgust_val = _computed_emotions.get("disgust", 0.0)
         _excitement_val = _computed_emotions.get("excitement", 0.0)
 
-        # 趋近调制
-        approach_mod = (
-            _joy_val * 0.15          # 喜悦 → 温和趋近
-            + _anger_val * 0.25      # 愤怒 → 尖锐趋近
-            + _excitement_val * 0.20 # 兴奋 → 乐于探索
-            - _sadness_val * 0.20    # 悲伤 → 行为滞重
-            - _anxiety_val * 0.10    # 焦虑 → 犹豫不决
-        )
-        # 回避调制
-        avoid_mod = (
-            _fear_val * 0.30         # 恐惧 → 强回避
-            + _disgust_val * 0.35    # 厌恶 → 专一回避
-            + _anxiety_val * 0.15    # 焦虑 → 自我干预
-            - _anger_val * 0.20      # 愤怒 → 压制回避
-        )
+        _edm = getattr(entity, "_emotion_drive_modulation", {})
+        _approach_mod_cfg = _edm.get("approach", {})
+        _avoid_mod_cfg = _edm.get("avoid", {})
+        _emotion_vals = {
+            "joy": _joy_val, "anger": _anger_val, "excitement": _excitement_val,
+            "sadness": _sadness_val, "anxiety": _anxiety_val, "fear": _fear_val,
+            "disgust": _disgust_val,
+        }
+        approach_mod = sum(_emotion_vals.get(e, 0.0) * w for e, w in _approach_mod_cfg.items())
+        avoid_mod = sum(_emotion_vals.get(e, 0.0) * w for e, w in _avoid_mod_cfg.items())
 
         entity.approach_drive = max(0.0, min(1.0, entity.approach_drive + approach_mod))
         entity.avoid_drive = max(0.0, min(1.0, entity.avoid_drive + avoid_mod))
@@ -1158,6 +1262,7 @@ def run_pipeline(
     try:
         emergent = _emerge_behavior(_make_core_wrapper(entity), drive_vector=drive_vector_final)
         emergent_action = emergent.action_type
+        entity._current_action = emergent_action  # 存入 entity，语言生成阶段可读取
         emergent_priority = emergent.priority
         emergent_tension = emergent.tension_level
         emergent_target = emergent.target
@@ -1175,6 +1280,7 @@ def run_pipeline(
             "fragmentation_tone": emergent_frag_tone,
         })
     except Exception as e:
+        logger.warning(f"[emergence] FALLBACK: {e}")
         emergent_action = "comfort"
         emergent_priority = 0.3
         emergent_tension = 0.0
@@ -1563,7 +1669,7 @@ def run_pipeline(
             )
 
             # unresolved source：用户输入 = external；沉默 tick = self_generated
-            raw_input_str = str(kwargs.get("raw_input", "") or "").strip()
+            raw_input_str = str(raw_input or "").strip()
             entity._bp_unresolved_src = "external" if raw_input_str else "self_generated"
 
             # 合并到 action_result（供 update_long_term_bias 使用）
@@ -1672,6 +1778,8 @@ def run_pipeline(
         except Exception:
             pass
 
+        # ---- 阅读候选词试用注入移到语言阻力之后（见下方 L1879+）----
+
         # ---- v11.3 微小探索扰动：仅打破分数平局，不覆盖自然匹配 ----
         # 已通过永久词汇表 + 短词优先选中的联合机制解锁了 40+ 热身词。
         # 现在恢复自然选择压力：让体感匹配和消力效率主导词的选择，
@@ -1739,6 +1847,41 @@ def run_pipeline(
         except Exception:
             pass
 
+        # ---- 阅读候选词试用注入（阻力之后）----
+        # 阅读习得的词包含锚点字，用锚点字的 somatic delta 做状态匹配打分。
+        # 在阻力之后注入：避免未知 bigram 频率（阻力 0.85）把新词分数打成负数。
+        # 匹配当前状态的阅读词得更高分，不匹配的仍以底分入池。
+        try:
+            _taste_log = getattr(entity, "_reading_taste_log", None)
+            if _taste_log:
+                _existing_words = {c[0] for c, _ in scored_candidates}
+                _reading_words_injected = 0
+                _state = entity.to_state_snapshot() if hasattr(entity, "to_state_snapshot") else {}
+                for _entry in _taste_log[-20:]:  # 最近 20 次阅读
+                    for _rw in _entry.get("words", []):
+                        if _rw not in _existing_words and len(_rw) <= 6:
+                            # 用锚点字匹配当前状态，得分 0.20~0.45
+                            _rw_score = 0.20
+                            try:
+                                from ..language_system.somatic_concept_map import get_state_match_score
+                                _match = get_state_match_score(_rw, _state)
+                                _rw_score = 0.20 + _match * 0.25  # 匹配度0→0.20, 匹配度1→0.45
+                            except Exception:
+                                pass
+                            scored_candidates.append((_rw, _rw_score))
+                            _existing_words.add(_rw)
+                            _reading_words_injected += 1
+                            if _reading_words_injected >= 5:
+                                break
+                    if _reading_words_injected >= 5:
+                        break
+                if _reading_words_injected > 0:
+                    logger.info(
+                        f"[ReadTrial] {_reading_words_injected} reading words injected into candidates"
+                    )
+        except Exception as _rtrial_err:
+            logger.warning(f"[ReadTrial] injection failed: {_rtrial_err}")
+
         # 选最佳候选（训练早期优先短词 ≤8字）
         best_candidate: Optional[str] = None
         best_score: float = 0.0
@@ -1772,6 +1915,7 @@ def run_pipeline(
         entity._language_best_candidate = best_candidate
         entity._language_best_score = best_score
         entity._language_candidates = [c for c, _ in scored_candidates[:5]]
+        entity._language_candidate_scores = {c: s for c, s in scored_candidates[:5]}
 
         # 训练早期阈值极低(0.001)——只要有候选就优先用，让她从单字词起步积累
         # 随训练推进，SNR 上升后自然抬高阈值
@@ -1779,9 +1923,10 @@ def run_pipeline(
         # 训练模式：只接受短候选（≤8字），强制从字词起步
         # 长候选留给后续阶段（组合阶段→自由表达阶段）
         _training_mode = (
-            best_candidate is not None 
+            best_candidate is not None
             and best_score > _training_threshold
             and len(best_candidate) <= 8
+            and not daemon_mode  # daemon 走自己的 anchor 路径，不设 _training_override
         )
         if _training_mode:
             # ---- v11.1: 功能词辅线注入 ----
@@ -1896,6 +2041,22 @@ def run_pipeline(
     if hasattr(entity, "_last_action_result"):
         state_snapshot["_last_action_result"] = entity._last_action_result
 
+    # 注入本轮预测结果（供语言系统感知自身状态变化趋势）
+    # Step 8.3b 已通过 predict_action_effects 计算当前决策导致的预期状态变化
+    if hasattr(entity, "_last_prediction") and entity._last_prediction:
+        state_snapshot["_prediction_delta"] = entity._last_prediction
+        # 展开预测数据为顶层字段（供 score_fn 直接读取）
+        for dim, delta in entity._last_prediction.items():
+            if isinstance(delta, (int, float)) and abs(delta) > 1e-6:
+                current = state_snapshot.get(dim, 0.0)
+                predicted = max(0.0, min(1.0, current + delta))
+                # 预测信号：维度名_predicted（0-1 预测值）
+                state_snapshot[f"{dim}_predicted"] = predicted
+                # 预测趋势信号：维度名_rising（0-1，>0.5 表示正在恶化）
+                state_snapshot[f"{dim}_rising"] = max(0.0, min(1.0, 0.5 + delta * 2.0))
+    if hasattr(entity, "_last_prediction_error"):
+        state_snapshot["_prediction_error"] = entity._last_prediction_error
+
     # =========================================================================
     # [接入点 4] Step 8.4（connection 计算）后：日常层→主线层投影 + 输出调制
     # =========================================================================
@@ -1967,7 +2128,37 @@ def run_pipeline(
                     entity._spawn_counter = _sc
             except Exception:
                 pass
+            # 恢复构式语法学习状态
+            try:
+                from ..language_system.construction_grammar import ConstructionLearner
+                _cxg_data = getattr(entity, "_cxg_data", None)
+                if _cxg_data and isinstance(_cxg_data, dict):
+                    entity._cxg_learner = ConstructionLearner.from_dict(_cxg_data)
+                else:
+                    entity._cxg_learner = ConstructionLearner()
+                entity._cxg_learner.ensure_seeds(entity.tick)
+            except Exception:
+                pass
+            # 恢复递归构式生成器
+            try:
+                from ..language_system.recursive_construction import RecursiveGenerator
+                _rcxg_data = getattr(entity, "_rcxg_data", None)
+                if _rcxg_data and isinstance(_rcxg_data, dict):
+                    entity._recursive_gen = RecursiveGenerator.from_dict(_rcxg_data)
+                else:
+                    entity._recursive_gen = RecursiveGenerator()
+            except Exception:
+                pass
             entity._recovery_done = True
+
+        # ---- 叙事尝试：有人说话时沉默分提高，anchor 更易上场 ----
+        _narrative_text = None
+        _social_signal = 1.0 if raw_input else 0.0
+        try:
+            from ..language_system.narrative_fragments import try_narrative_expression
+            _narrative_text = try_narrative_expression(entity, social_input=_social_signal)
+        except Exception as _narr_err:
+            logger.warning(f"[Narrative] try_narrative_expression failed: {_narr_err}")
 
         try:
             from ..language_training import match_anchor_expression
@@ -1975,140 +2166,274 @@ def run_pipeline(
             _result = match_anchor_expression(_real_state, entity, return_details=True)
             _anchor_text = _result.get("text", "") if isinstance(_result, dict) else _result
             _best_word = _result.get("best_word") if isinstance(_result, dict) else None
+            _second_word = _result.get("second_word") if isinstance(_result, dict) else None
             _opening = _result.get("opening_particle", "") if isinstance(_result, dict) else ""
+            _anchor_best_score_raw = _result.get("best_score", 0.0) if isinstance(_result, dict) else 0.0
+            _anchor_cand_count = _result.get("cand_count", 0) if isinstance(_result, dict) else 0
+            logger.info(
+                f"[AnchorMatch] t={entity.tick} "
+                f"text='{(_anchor_text or '')[:20]}' best_word={_best_word} "
+                f"score={_anchor_best_score_raw:.3f} cands={_anchor_cand_count} "
+                f"narrative={'Y' if _narrative_text else 'N'}"
+            )
 
+            # ---- ① 合成始终运行（有 anchor 时）----
+            # 解耦：模板选择独立于显示决策，确保学习系统每 tick 都有数据
+            _tmpl_idx = -1
             if _anchor_text:
-                _tmpl_idx = -1
                 try:
-                    from ..language_system.sentence_composer import compose_sentence
-                    # 从 QuenchingTracker 获取历史模板效率
+                    from ..language_system.sentence_composer import compose_sentence, PATTERNS
+                    # 从 QuenchingTracker 获取历史模板效率（含贝叶斯先验）
                     _te = {}
                     _q_tmp = getattr(entity, "_quenching", None)
                     if _q_tmp is not None:
-                        _te = _q_tmp.get_template_efficiency()
+                        _te = _q_tmp.get_template_efficiency(seed_count=len(PATTERNS))
+                    # 合并 extra_templates：runtime + CxG 构式候选
+                    _extra = list(getattr(entity, "_runtime_templates", None) or [])
+                    try:
+                        _cxg = getattr(entity, "_cxg_learner", None)
+                        if _cxg is not None:
+                            _rcxg = getattr(entity, "_recursive_gen", None)
+                            _anchor_list = list(getattr(entity, "_unlocked_vocabulary", []))[:20]
+                            _cxg_candidates = _cxg.generate_candidates(
+                                _best_word or _anchor_text,
+                                _real_state,
+                                second_anchor=_second_word or "",
+                                recursive_generator=_rcxg,
+                                anchor_words=_anchor_list,
+                                action_context=getattr(entity, "_current_action", "") or "",
+                            )
+                            _extra.extend(_cxg_candidates)
+                    except Exception:
+                        pass
                     _composed, _tmpl_idx = compose_sentence(
                         _best_word or _anchor_text,
                         _real_state,
                         connector=_opening,
                         template_efficiency=_te,
                         learned_weights=getattr(entity, "_template_learned_weights", None),
-                        extra_templates=getattr(entity, "_runtime_templates", None),
+                        extra_templates=_extra or None,
+                        second_anchor=_second_word,
                     )
                     if _composed:
                         _anchor_text = _composed
                 except Exception:
                     pass
-                entity._last_template_idx = _tmpl_idx
-                response = {"text": _anchor_text, "confidence": 0.85, "generation_time_ms": 0}
-                _trace("output", True, {"mode": "anchor_auto", "text": _anchor_text[:40]})
-                logger.info(f"[AnchorAuto] t={entity.tick} said: '{_anchor_text}'")
-                entity._vr_prev = dict(_real_state)
+            entity._last_template_idx = _tmpl_idx
 
-                # ---- 表达消力 + 消力记录（daemon 自主学习）----
-                if _best_word:
-                    try:
-                        from ..quenching_system import expression_quenching
-                        _ur_before = float(_real_state.get("unresolved", 0.0))
-                        # 施加表达消力效果（内部已写回 entity）
-                        expression_quenching(entity, _best_word)
-                        _ur_after = float(getattr(entity, "unresolved", 0.0))
-                        # 用真实 before/after 记录消力效率
-                        _q = getattr(entity, "_quenching", None)
-                        if _q is None:
-                            _qd = getattr(entity, "_quenching_data", None)
-                            _q = QuenchingTracker.from_dict(_qd) if (_qd and _qd.get("records")) else QuenchingTracker()
-                            entity._quenching = _q
-                        _q.record(
-                            drive_state=_real_state,
-                            expression=_best_word,
-                            delta_unresolved_before=_ur_before,
-                            delta_unresolved_after=_ur_after,
-                            tick=entity.tick,
-                            template_idx=getattr(entity, "_last_template_idx", -1),
-                        )
-                        entity._quenching_data = _q.to_dict()
+            # ---- ② 显示决策（softmax 连续竞争，无 if/elif/else）----
+            # narrative 和 anchor 各自的得分在同一个 softmax 池竞争
+            # 空文本 → len=0 → score=0 → softmax 自动淘汰
+            import math as _d_math
+            _narr_gate = min(1.0, len(_narrative_text or ""))
+            _anchor_gate = min(1.0, len(_anchor_text or ""))
+            _narr_disp = 0.80 * _narr_gate
+            _anchor_disp = _anchor_best_score_raw * 0.85 * _anchor_gate
 
-                        # ---- 模板权重学习 + 进化 ----
-                        try:
-                            from ..language_system import template_learner
-                            _eff = max(0.0, _ur_before - _ur_after)
-                            _lw = getattr(entity, "_template_learned_weights", {})
-                            template_learner.update_weights(
-                                getattr(entity, "_last_template_idx", -1),
-                                _real_state, _eff, _lw,
-                            )
-                            entity._template_learned_weights = _lw
+            # softmax（temperature=0.15 → 接近确定性，高分稳赢）
+            _d_scores = [_narr_disp, _anchor_disp]
+            _d_max = max(_d_scores)
+            _d_w = [_d_math.exp((s - _d_max) / max(0.15, 0.01)) for s in _d_scores]
+            _d_sum = sum(_d_w)
+            import random as _d_rnd
+            _d_idx = _d_rnd.choices([0, 1], weights=[w / max(_d_sum, 1e-9) for w in _d_w], k=1)[0]
 
-                            # 尝试进化新模板
-                            from ..language_system.sentence_composer import PATTERNS
-                            _rt = getattr(entity, "_runtime_templates", [])
-                            _sc = getattr(entity, "_spawn_counter", 0)
-                            _stats = _q.get_template_stats()
-                            _new_tmpl, _sc = template_learner.try_spawn_template(
-                                _stats, PATTERNS, _rt, _sc,
-                            )
-                            entity._spawn_counter = _sc
-                            if _new_tmpl is not None:
-                                _new_tmpl["born_tick"] = entity.tick
-                                _rt.append(_new_tmpl)
-                                entity._runtime_templates = _rt
-                                logger.info(f"[TemplateLearner] t={entity.tick} new template: {_new_tmpl['template']}")
+            _chosen_text = [_narrative_text or "", _anchor_text or ""][_d_idx]
+            _chosen_mode = ["narrative", "anchor_auto"][_d_idx]
+            _chosen_conf = _d_scores[_d_idx]
+            _anchor_display_w = float(_d_idx)  # 0.0=narrative, 1.0=anchor
 
-                            # 持久化学习状态
-                            entity._template_learner_data = template_learner.to_dict(
-                                _lw, _rt, _sc,
-                            )
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
+            response = {"text": _chosen_text, "confidence": _chosen_conf, "generation_time_ms": 0}
+            _trace("output", True, {"mode": _chosen_mode, "text": _chosen_text[:40]})
+            # dict dispatch 日志
+            logger.info({
+                0: f"[Narrative] t={entity.tick} said: '{_chosen_text}'",
+                1: f"[AnchorAuto] t={entity.tick} said: '{_chosen_text}'",
+            }[_d_idx])
+            entity._vr_prev = entity.to_state_snapshot()
 
-                # ---- 热身注入（daemon 自主积累）----
-                try:
-                    from ..language_system.word_warmup import inject_warmup_candidates
-                    inject_warmup_candidates(entity, [], min_hits=3, min_best_efficiency=0.15)
-                except Exception:
-                    pass
-
-                # ---- 训练 episode 写入（daemon 自主学习持久化）----
+            # ---- 训练 episode 写入（anchor 显示时记录）----
+            # _anchor_display_w 连续门控：0→跳过，1→写入
+            for _ in range(int(round(_anchor_display_w))):
                 try:
                     from ..memory_hub.episodes_db import Episode, write_episode
                     from datetime import datetime, timezone
                     _ep = Episode(
                         iteration_id=entity.tick,
                         timestamp=datetime.now(timezone.utc).isoformat(),
-                        output_text=_anchor_text,
+                        output_text=_anchor_text or "",
                         state_snapshot=dict(_real_state),
-                        importance=min(1.0, _result.get("best_score", 0.5)) if isinstance(_result, dict) else 0.5,
-                        tags=["autonomous", "anchor_expression"] + ([f"word:{_best_word}"] if _best_word else []),
+                        importance=min(1.0, _anchor_best_score_raw),
+                        tags=["autonomous", "anchor_expression", f"word:{_best_word or 'none'}"],
                         summary=f"[anchor_auto] {_anchor_text}",
                     )
                     write_episode(_ep)
                 except Exception:
                     pass
 
-                # ---- 内源校准（每 30 tick 回溯验证一次）----
-                if entity.tick % 30 == 0:
+            # ---- 内语回路（anchor 显示时生效）----
+            # _anchor_display_w 连续缩放：narrative 显示时 delta=0（无效果）
+            try:
+                from ..language_system.construction_parser import parse_self_speech
+                _inner = parse_self_speech(_anchor_text or "", entity)
+                _inner_delta = _inner.get("drive_delta", {})
+                for _dim, _val in _inner_delta.items():
+                    _old = getattr(entity, _dim, None)
+                    if _old is not None and isinstance(_old, (int, float)):
+                        setattr(entity, _dim, max(0.0, min(1.0, float(_old) + _val * _anchor_display_w)))
+                _comprehension = _inner.get("comprehension", 0.0) * _anchor_display_w
+                _trace("inner_speech", _comprehension > 0, {
+                    "text": (_anchor_text or "")[:30],
+                    "comprehension": _comprehension,
+                    "delta_dims": list(_inner_delta.keys()),
+                })
+            except Exception:
+                pass
+
+            # ---- ③ 学习始终运行（解耦自显示——叙事说话时学习也跑）----
+            # 写回 anchor 选词分数，narrative_fragments 下一 tick 的
+            # _build_context() 读 _language_best_score 来决定 feeling 槽
+            _anchor_best_score = _result.get("best_score", 0.0) if isinstance(_result, dict) else 0.0
+            entity._language_best_score = _anchor_best_score
+            entity._language_best_candidate = _best_word
+            entity._language_best_expression = _anchor_text
+
+            # ---- 表达消力 + 消力记录（每 tick 运行）----
+            if _best_word:
+                try:
+                    from ..quenching_system import expression_quenching
+                    _ur_before = float(_real_state.get("unresolved", 0.0))
+                    # 施加表达消力效果（内部已写回 entity）
+                    expression_quenching(entity, _best_word)
+                    _ur_after = float(getattr(entity, "unresolved", 0.0))
+                    # 用真实 before/after 记录消力效率
+                    _q = getattr(entity, "_quenching", None)
+                    if _q is None:
+                        _qd = getattr(entity, "_quenching_data", None)
+                        _q = QuenchingTracker.from_dict(_qd) if (_qd and _qd.get("records")) else QuenchingTracker()
+                        entity._quenching = _q
+                    _q.record(
+                        drive_state=_real_state,
+                        expression=_best_word,
+                        delta_unresolved_before=_ur_before,
+                        delta_unresolved_after=_ur_after,
+                        tick=entity.tick,
+                        template_idx=getattr(entity, "_last_template_idx", -1),
+                    )
+                    entity._quenching_data = _q.to_dict()
+
+                    # ---- 模板权重学习 + 进化 ----
                     try:
-                        from ..endogenous_calibration import calibrate_from_episodes, apply_calibration
-                        _calib_report = calibrate_from_episodes(entity, _real_state, limit=5)
-                        apply_calibration(entity, _calib_report)
-                        if _calib_report.get("verified_count", 0) > 0:
-                            logger.info(
-                                f"[Calibrate] tick={entity.tick} "
-                                f"verified={_calib_report['verified_count']} "
-                                f"rate={_calib_report.get('verification_rate', 0):.0%}"
-                            )
+                        from ..language_system import template_learner
+                        # 归一化效率：除以 unresolved 基线，使阈值自适应
+                        # 原来 _eff ≈ 0.005（unresolved=0.05 时），低于
+                        # update_weights 的 0.01 门槛和 0.05 baseline
+                        # 归一化后 0.005/0.05 = 0.10，阈值通过，advantage 为正
+                        _eff = max(0.0, _ur_before - _ur_after) / max(_ur_before, 0.01)
+                        _lw = getattr(entity, "_template_learned_weights", {})
+                        template_learner.update_weights(
+                            getattr(entity, "_last_template_idx", -1),
+                            _real_state, _eff, _lw,
+                        )
+                        entity._template_learned_weights = _lw
+
+                        # 尝试进化新模板
+                        from ..language_system.sentence_composer import PATTERNS
+                        _rt = getattr(entity, "_runtime_templates", [])
+                        _sc = getattr(entity, "_spawn_counter", 0)
+                        _stats = _q.get_template_stats(seed_count=len(PATTERNS))
+                        _new_tmpl, _sc = template_learner.try_spawn_template(
+                            _stats, PATTERNS, _rt, _sc,
+                        )
+                        entity._spawn_counter = _sc
+                        if _new_tmpl is not None:
+                            _new_tmpl["born_tick"] = entity.tick
+                            _rt.append(_new_tmpl)
+                            entity._runtime_templates = _rt
+                            logger.info(f"[TemplateLearner] t={entity.tick} new template: {_new_tmpl['template']}")
+
+                        # 持久化学习状态
+                        entity._template_learner_data = template_learner.to_dict(
+                            _lw, _rt, _sc,
+                        )
                     except Exception:
                         pass
-            else:
-                response = {"text": "", "confidence": 0.0, "generation_time_ms": 0}
-                _trace("output", True, {"mode": "anchor_auto_silent", "text_len": 0})
-                if entity.tick % 10 == 0:
-                    logger.info(f"[AnchorAuto] t={entity.tick} silent (no anchor matched)")
+
+                    # ---- 构式习得：记录实例 + 反馈 ----
+                    try:
+                        from ..language_system.sentence_composer import PATTERNS as _CXG_PATTERNS
+                        _cxg = getattr(entity, "_cxg_learner", None)
+                        if _cxg is not None and _best_word:
+                            # 获取当前使用的模板字符串
+                            _all_tmpls = _CXG_PATTERNS + list(getattr(entity, "_runtime_templates", []))
+                            _ti = getattr(entity, "_last_template_idx", -1)
+                            _tmpl_str = ""
+                            if 0 <= _ti < len(_all_tmpls):
+                                _tmpl_str = _all_tmpls[_ti].get("template", "")
+                            elif _ti < -1:
+                                # 负数索引 = compound pattern
+                                from ..language_system.sentence_composer import COMPOUND_PATTERNS
+                                _ci = -1000 - _ti
+                                if 0 <= _ci < len(COMPOUND_PATTERNS):
+                                    _tmpl_str = COMPOUND_PATTERNS[_ci].get("template", "")
+
+                            if _tmpl_str:
+                                _cxg.record_instance(
+                                    template_str=_tmpl_str,
+                                    anchor=_best_word,
+                                    drive_state=_real_state,
+                                    efficiency=_eff,
+                                    tick=entity.tick,
+                                    second_anchor=_second_word or "",
+                                )
+                                # 如果选中的是 CxG 生成的模板，反馈强化
+                                if _ti >= len(_CXG_PATTERNS) and _ti < len(_all_tmpls):
+                                    _sel_tmpl = _all_tmpls[_ti]
+                                    if _sel_tmpl.get("_from_cxg"):
+                                        _cxg.reinforce(
+                                            _tmpl_str, _eff, entity.tick,
+                                            action_context=getattr(entity, "_current_action", "") or "",
+                                        )
+
+                            # 周期衰减 + 持久化
+                            _cxg.decay_all(entity.tick)
+                            entity._cxg_data = _cxg.to_dict()
+                            # 递归生成器衰减 + 持久化
+                            _rcxg = getattr(entity, "_recursive_gen", None)
+                            if _rcxg is not None:
+                                _rcxg.decay_all()
+                                entity._rcxg_data = _rcxg.to_dict()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+            # ---- 热身注入（daemon 自主积累）----
+            try:
+                from ..language_system.word_warmup import inject_warmup_candidates
+                inject_warmup_candidates(entity, [], min_hits=3, min_best_efficiency=0.15)
+            except Exception:
+                pass
+
+            # ---- 内源校准（每 30 tick 回溯验证一次）----
+            if entity.tick % 30 == 0:
+                try:
+                    from ..endogenous_calibration import calibrate_from_episodes, apply_calibration
+                    _calib_report = calibrate_from_episodes(entity, _real_state, limit=5)
+                    apply_calibration(entity, _calib_report)
+                    if _calib_report.get("verified_count", 0) > 0:
+                        logger.info(
+                            f"[Calibrate] tick={entity.tick} "
+                            f"verified={_calib_report['verified_count']} "
+                            f"rate={_calib_report.get('verification_rate', 0):.0%}"
+                        )
+                except Exception:
+                    pass
         except Exception as e:
-            response = {"text": "", "confidence": 0.0, "generation_time_ms": 0}
-            _trace("output", False, {}, str(e))
+            logger.warning(f"[AnchorPath] t={entity.tick} error: {type(e).__name__}: {e}")
+            if not _narrative_text:
+                response = {"text": "", "confidence": 0.0, "generation_time_ms": 0}
+                _trace("output", False, {}, str(e))
     else:
         # V2.0：主线检索——注入对话历史层 + 相关历史经验
         mainline_result = None
@@ -2257,20 +2582,57 @@ def run_pipeline(
         entity._sync_loneliness()
         entity.unresolved = max(0.0, min(1.0, new_state.get("unresolved", entity.unresolved)))
         entity.boredom = max(0.0, min(1.0, new_state.get("boredom", entity.boredom)))
+        entity.info_gap = max(0.0, min(1.0, new_state.get("info_gap", entity.info_gap)))
 
         # ---- 语言消力反馈（v7.0）----
         # 表达匹配驱动力场 → unresolved 下降（消力）
         # 匹配度越高，消力越强——这是语言从驱动力场中长出来的根
+        # 关键：在回写后、消力前捕获 unresolved，这样 efficiency = 纯消力效果
+        _ur_before_quench = entity.unresolved
         _lang_score = float(getattr(entity, "_language_best_score", 0.0))
         if _lang_score > 0.10:
-            # 消力幅度 = 匹配分 × 消力系数
-            _quench = _lang_score * 0.25
+            # 重复表达递减：同一个词反复说，消力效率打折
+            _rep_discount = 1.0
+            try:
+                _qt = getattr(entity, "_quenching_tracker", None)
+                _expr = str(getattr(entity, "_language_best_expression", ""))
+                if _qt and _expr:
+                    _rdp = getattr(entity, "_repetition_decay_params", {})
+                    _rep_discount = _qt.get_repetition_discount(_expr, entity.tick, _rdp)
+            except Exception:
+                pass
+            _qfw = getattr(entity, "_quench_feedback_weights", {})
+            _quench = _lang_score * _qfw.get("quench_rate", 0.25) * _rep_discount
             entity.unresolved = max(0.0, entity.unresolved - _quench)
-            # 表达成功后 approach/avoid 同步释放（僵持被语言化解）
-            entity.approach_drive = max(0.0, entity.approach_drive - _quench * 0.3)
-            entity.avoid_drive = max(0.0, entity.avoid_drive - _quench * 0.3)
-            # 说对了 → 身体有轻微舒适感
-            entity.somatic_tone = min(1.0, entity.somatic_tone + _quench * 0.15)
+            entity.approach_drive = max(0.0, entity.approach_drive - _quench * _qfw.get("approach_release", 0.3))
+            entity.avoid_drive = max(0.0, entity.avoid_drive - _quench * _qfw.get("avoid_release", 0.3))
+            entity.somatic_tone = min(1.0, entity.somatic_tone + _quench * _qfw.get("somatic_comfort", 0.15))
+
+        # 快照：消力后、问题张力注入前的 unresolved
+        # L3b 消力记录需要这个值，否则问题张力会被算成"消力失败"
+        _ur_after_quench = entity.unresolved
+
+        # ---- 问题张力注入（Step 7.5 延迟的部分）----
+        # 必须在 writeback + 消力之后：
+        #   writeback 会用 update_state 的结果覆盖 unresolved
+        #   消力会扣减 unresolved
+        #   问题张力是"新发现"产生的困惑，不应被同 tick 的消力抵消
+        if _question_tension > 0:
+            entity.unresolved = min(1.0, entity.unresolved + _question_tension)
+            entity.info_gap = min(1.0, entity.info_gap + _question_tension)
+
+        # ---- 反馈回路（v1.0）----
+        try:
+            from ..feedback_loop import compute_acute_feedback, update_chronic_tracker
+            _lang_score_fb = float(getattr(entity, "_language_best_score", 0.0))
+            _acute = compute_acute_feedback(_lang_score_fb, entity)
+            for _dim, _val in _acute.items():
+                _old = getattr(entity, _dim, 0.0)
+                setattr(entity, _dim, max(0.0, min(1.0, _old + _val)))
+            update_chronic_tracker(_lang_score_fb, entity)
+        except Exception:
+            pass
+
         entity.fatigue = max(0.0, min(1.0, new_state.get("fatigue", entity.fatigue)))
         entity.stress = max(0.0, min(1.0, new_state.get("stress", entity.stress)))
         entity.relief_debt = max(0.0, min(1.0, new_state.get("relief_debt", entity.relief_debt)))
@@ -2285,15 +2647,43 @@ def run_pipeline(
         entity.time_since_last_social = max(0.0, entity.time_since_last_social + idle_seconds)
         entity.last_update_time = time.time()
         entity.tick += 1
+        # 反馈回路：streak 自然衰减
+        try:
+            from ..feedback_loop import decay_chronic_tracker
+            decay_chronic_tracker(entity)
+        except Exception:
+            pass
+        # ---- 回应压力（负反馈，在 writeback + 消力之后施加）----
+        if _cx_parse_result:
+            _comp = _cx_parse_result.get("comprehension", 0.0)
+            _rp = getattr(entity, "_response_pressure_params", {})
+            _rp_coeff = _rp.get("coefficient", 0.03)
+            _rp_min = _rp.get("min_comprehension", 0.3)
+            if _comp >= _rp_min:
+                entity.unresolved = min(1.0, entity.unresolved + _comp * _rp_coeff)
+            else:
+                entity.info_gap = min(1.0, entity.info_gap + (1.0 - _comp) * _rp_coeff)
+
         # V5: 代谢物衰减 + 精神副作用
         m = getattr(entity, "failure_metabolite", 0.0)
-        entity.failure_metabolite = max(0.0, m - 0.03)  # 自然降解
+        # 底线：未解决失败每个贡献 0.05，不允许代谢物归零
+        _failure_floor = len(getattr(entity, "pending_failures", [])) * 0.05
+        entity.failure_metabolite = max(_failure_floor, m - 0.03)
         if m > 0.01:
-            # 乳酸堆积的精神副作用：不想动、想缩、不想探索
-            entity.approach_drive = max(0.0, entity.approach_drive - m * 0.15)
-            entity.avoid_drive = min(1.0, entity.avoid_drive + m * 0.12)
-            entity.curiosity = max(0.0, getattr(entity, "curiosity", 0.5) - m * 0.10)
-            entity.somatic_tone = max(-1.0, entity.somatic_tone - m * 0.08)
+            _fmw = getattr(entity, "_failure_metabolite_weights", {})
+            entity.approach_drive = max(0.0, entity.approach_drive - m * _fmw.get("approach_suppress", 0.15))
+            entity.avoid_drive = min(1.0, entity.avoid_drive + m * _fmw.get("avoid_increase", 0.12))
+            entity.curiosity = max(0.0, getattr(entity, "curiosity", 0.5) - m * _fmw.get("curiosity_suppress", 0.10))
+            entity.somatic_tone = max(-1.0, entity.somatic_tone - m * _fmw.get("somatic_damage", 0.08))
+        # 清理过期失败（TTL = 1800 tick ≈ 30分钟）
+        _now_ts = time.time()
+        _pf = getattr(entity, "pending_failures", [])
+        if _pf:
+            entity.pending_failures = [
+                f for f in _pf
+                if _now_ts - (f.get("timestamp", _now_ts) if isinstance(f, dict)
+                              else getattr(f, "timestamp", _now_ts)) < 1800
+            ]
         # 回填 pending_surprises（由 update_state 处理后的最新状态）
         entity.pending_surprises = list(new_state.get("pending_surprises", []))
 
@@ -2638,15 +3028,16 @@ def run_pipeline(
     # =========================================================================
     try:
         if _lang_before_state is not None and _lang_expression:
-            after_unresolved = float(getattr(entity, "unresolved", 0.0))
-            # DEBUG: 确认消力闭环拿到了正确的 after 值
+            # 用回写后消力前 vs 消力后的值（纯消力效果，排除回写和问题张力）
+            quench_before = _ur_before_quench if _ur_before_quench is not None else before_unresolved
+            quench_after = _ur_after_quench if _ur_after_quench is not None else float(getattr(entity, "unresolved", 0.0))
             if debug:
-                print(f"  [L3b DEBUG] before={before_unresolved:.3f} after={after_unresolved:.3f} delta={before_unresolved-after_unresolved:.3f}")
+                print(f"  [L3b DEBUG] before={quench_before:.3f} after={quench_after:.3f} delta={quench_before-quench_after:.3f}")
                 print(f"  [L3b DEBUG] _quenching id={id(_quenching)} history={len(_quenching._history)} type={type(_quenching).__name__}")
             real_efficiency = _semantic_analyzer.verify_quenching(
                 _lang_expression,
-                before_unresolved,
-                after_unresolved,
+                quench_before,
+                quench_after,
                 snapshot,
             )
             if debug:
@@ -2654,8 +3045,8 @@ def run_pipeline(
             _quenching.record(
                 drive_state=dict(_lang_before_state),
                 expression=_lang_expression,
-                delta_unresolved_before=before_unresolved,
-                delta_unresolved_after=after_unresolved,
+                delta_unresolved_before=quench_before,
+                delta_unresolved_after=quench_after,
                 tick=entity.tick,
                 template_idx=getattr(entity, "_last_template_idx", -1),
             )
@@ -2664,11 +3055,11 @@ def run_pipeline(
             _comps = getattr(entity, "_training_components", [])
             for _comp in _comps:
                 if _comp and _comp != _lang_expression and len(_comp) <= 8:
-                    _comp_after = before_unresolved - (before_unresolved - after_unresolved) * 0.8
+                    _comp_after = quench_before - (quench_before - quench_after) * 0.8
                     _quenching.record(
                         drive_state=dict(_lang_before_state),
                         expression=_comp,
-                        delta_unresolved_before=before_unresolved,
+                        delta_unresolved_before=quench_before,
                         delta_unresolved_after=_comp_after,
                         tick=entity.tick,
                     )
@@ -2695,7 +3086,7 @@ def run_pipeline(
             # ---- 模板权重学习 + 进化（L3b 路径）----
             try:
                 from ..language_system import template_learner
-                _eff_l3b = max(0.0, before_unresolved - after_unresolved)
+                _eff_l3b = max(0.0, quench_before - quench_after)
                 _lw = getattr(entity, "_template_learned_weights", {})
                 template_learner.update_weights(
                     getattr(entity, "_last_template_idx", -1),
@@ -2730,8 +3121,8 @@ def run_pipeline(
 
             _trace("language闭环_post", True, {
                 "expression": _lang_expression[:30],
-                "before_unresolved": round(before_unresolved, 4),
-                "after_unresolved": round(after_unresolved, 4),
+                "before_unresolved": round(quench_before, 4),
+                "after_unresolved": round(quench_after, 4),
                 "real_efficiency": round(real_efficiency, 4),
                 "snr": round(_quenching.get_snr(), 4),
             })
@@ -2788,6 +3179,44 @@ def run_pipeline(
         logger.warning(f"[run_pipeline] persist_to_file failed: {e}")
 
     total_ms = round((time.time() - t0) * 1000, 2)
+
+    # ---- 涌现观测日志（每 tick 一行 JSONL）----
+    try:
+        _cxg = getattr(entity, "_cxg_learner", None)
+        _asw = getattr(entity, "_approach_synthesis_weights", {})
+        _cft = getattr(entity, "_chronic_feedback_tracker", {})
+        _expr = output_expression if output_expression else str(getattr(entity, "_language_best_candidate", "") or "")
+        _expr_score = float(getattr(entity, "_language_best_score", 0.0))
+        _obs = {
+            "t": entity.tick,
+            "ts": round(time.time()),
+            "ur": round(entity.unresolved, 4),
+            "ig": round(entity.info_gap, 4),
+            "ft": round(entity.fatigue, 4),
+            "en": round(entity.energy, 4),
+            "ln": round(entity.loneliness, 4),
+            "bd": round(entity.boredom, 4),
+            "st": round(entity.stress, 4),
+            "ap": round(entity.approach_drive, 4),
+            "av": round(entity.avoid_drive, 4),
+            "cur": round(getattr(entity, "curiosity", 0.5), 4),
+            "asw": {k: round(v, 4) for k, v in _asw.items()},
+            "cft": {k: round(v, 4) for k, v in _cft.items()},
+            "cxg_n": _cxg.construction_count if _cxg else 0,
+            "cxg_inst": len(_cxg._instances) if _cxg else 0,
+            "cxg_max": round(max((cx.strength for cx in _cxg._constructions.values()), default=0.0), 4) if _cxg else 0,
+            "vocab": len(getattr(entity, "_unlocked_vocabulary", [])),
+            "warm": len(getattr(entity, "_warm_words", {})),
+            "expr": _expr[:20] if _expr else "",
+            "expr_s": round(_expr_score, 4),
+            "input": str(raw_input)[:30] if raw_input else "",
+            "ms": total_ms,
+        }
+        _log_path = Path(__file__).parent.parent.parent / "logs" / "emergence.jsonl"
+        with open(_log_path, "a", encoding="utf-8") as _f:
+            _f.write(json.dumps(_obs, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
     return {
         "response": response,

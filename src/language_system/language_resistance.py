@@ -217,9 +217,10 @@ def apply_resistance(candidates: list, weight: Optional[float] = None) -> list:
     w = weight if weight is not None else _RESISTANCE_WEIGHT
 
     adjusted = []
-    for word, score, _ in candidates:
+    for entry in candidates:
+        word, score = entry[0], entry[1]
         resistance = get_resistance(word)
         adjusted_score = score - resistance * w
-        adjusted.append((word, max(0.0, adjusted_score), 0.0))
+        adjusted.append((word, max(0.0, adjusted_score)))
 
     return adjusted

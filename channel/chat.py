@@ -1,5 +1,5 @@
 """
-XIA — CLI 对话通道
+克糯糯 — CLI 对话通道
 
 统一入口：所有输入都走完整的认知-决策-行动-反思管线。
 
@@ -45,7 +45,6 @@ from src.entity_zero_iteration import (
     run_pipeline,
     reset_entity_state,
     get_entity_state,
-    run_test_scenario,
 )
 
 
@@ -54,15 +53,15 @@ from src.entity_zero_iteration import (
 # ============================================================================
 
 def _print_response(response: dict) -> None:
-    """打印 XIA 的回复"""
+    """打印克糯糯的回复"""
     text = response.get("text", "")
     confidence = response.get("confidence", 0.0)
     elapsed = response.get("generation_time_ms", 0)
 
     if text:
-        print(f"\n【XIA】{text}")
+        print(f"\n【克糯糯】{text}")
     else:
-        print("\n【XIA】（无输出）")
+        print("\n【克糯糯】（无输出）")
 
     print(f"  置信度 {confidence:.2f}  ·  生成耗时 {elapsed:.0f}ms")
 
@@ -156,7 +155,7 @@ def chat_turn(user_input: str, debug: bool = False) -> dict:
 def chat(debug: bool = False, initial_input: str = None) -> None:
     """启动对话循环（多轮或单轮）"""
     print("=" * 60)
-    print("XIA — 认知引擎对话接口")
+    print("克糯糯 — 认知引擎对话接口")
     print("=" * 60)
 
     print("输入内容直接发送，空白行退出。")
@@ -188,6 +187,26 @@ def chat(debug: bool = False, initial_input: str = None) -> None:
             print(f"【你】 {user_input}")
             chat_turn(user_input, debug)
 
+    finally:
+        pass
+
+
+def run_test_scenario(scenario_name: str) -> None:
+    """运行预设测试场景"""
+    from src.entity_state import TEST_SCENARIOS, force_set_state, get_entity_state
+    scenarios = TEST_SCENARIOS
+    if scenario_name not in scenarios:
+        print(f"未知场景: {scenario_name}，可用: {list(scenarios.keys())}")
+        return
+    overrides = scenarios[scenario_name]
+    print(f"设置测试场景: {scenario_name}")
+    print(f"状态覆盖: {overrides}")
+    force_set_state(overrides)
+    entity = get_entity_state()
+    _print_state(entity)
+    print(f"\n然后你可以继续对话，观察该状态下的 XIA 行为。")
+    print(f"提示：用 python -m channel 进入交互式对话。")
+
 
 # ============================================================================
 # 入口
@@ -212,7 +231,7 @@ def _check_daemon() -> bool:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="XIA — CLI 对话入口")
+    parser = argparse.ArgumentParser(description="克糯糯 — CLI 对话入口")
     parser.add_argument("--debug", action="store_true", help="显示管线执行追踪")
     parser.add_argument("--reset", action="store_true", help="重置实体内核状态")
     parser.add_argument("--test", metavar="SCENARIO", help="运行测试场景（scenario1 / scenario2 / scenario3）")
@@ -233,7 +252,7 @@ if __name__ == "__main__":
     daemon_available = False
 
     if use_daemon:
-        print("  [检查] 正在连接 XIA daemon...", end="", flush=True)
+        print("  [检查] 正在连接克糯糯 daemon...", end="", flush=True)
         daemon_available = _check_daemon()
         if daemon_available:
             print("  已连接")
@@ -244,7 +263,7 @@ if __name__ == "__main__":
         if daemon_available:
             # ---- daemon 模式 ----
             print("=" * 60)
-            print("XIA — 认知引擎对话接口 [daemon 模式]")
+            print("克糯糯 — 认知引擎对话接口 [daemon 模式]")
             print("=" * 60)
             print("输入内容直接发送，空白行退出。")
             print(f"调试模式: {'开' if args.debug else '关'}")

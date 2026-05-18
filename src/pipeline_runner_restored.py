@@ -3006,6 +3006,20 @@ def run_pipeline(
     if hasattr(entity, "_last_action_result"):
         state_snapshot["_last_action_result"] = entity._last_action_result
 
+    # 注入本轮预测结果（供语言系统感知自身状态变化趋势）
+    # Step 8.3b 已通过 predict_action_effects 计算当前决策导致的预期状态变化
+    if hasattr(entity, "_last_prediction") and entity._last_prediction:
+        state_snapshot["_prediction_delta"] = entity._last_prediction
+        # 展开预测数据为顶层字段（供 score_fn 直接读取）
+        for dim, delta in entity._last_prediction.items():
+            if isinstance(delta, (int, float)) and abs(delta) > 1e-6:
+                current = state_snapshot.get(dim, 0.0)
+                predicted = max(0.0, min(1.0, current + delta))
+                state_snapshot[f"{dim}_predicted"] = predicted
+                state_snapshot[f"{dim}_rising"] = max(0.0, min(1.0, 0.5 + delta * 2.0))
+    if hasattr(entity, "_last_prediction_error"):
+        state_snapshot["_prediction_error"] = entity._last_prediction_error
+
     # =========================================================================
     # [接入点 4] Step 8.4（connection 计算）后：日常层→主线层投影 + 输出调制
     # =========================================================================

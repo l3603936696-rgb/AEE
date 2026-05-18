@@ -259,20 +259,27 @@ class Snap:
             if not isinstance(data, dict):
                 return cls()
 
+            def _floats_only(d: dict) -> Dict[str, float]:
+                """提取 dict 中可转 float 的条目，跳过嵌套结构"""
+                out = {}
+                for k, v in d.items():
+                    try:
+                        out[str(k)] = float(v)
+                    except (TypeError, ValueError):
+                        pass
+                return out
+
             return cls(
                 snap_index=int(data.get("snap_index", 0)),
                 timestamp=float(data.get("timestamp", 0.0)),
                 action_type=str(data.get("action_type", "")),
                 target=str(data.get("target", "")),
                 priority=float(data.get("priority", 0.0)),
-                pre_state={k: float(v) for k, v in data.get("pre_state", {}).items()},
-                post_state={k: float(v) for k, v in data.get("post_state", {}).items()},
+                pre_state=_floats_only(data.get("pre_state", {})),
+                post_state=_floats_only(data.get("post_state", {})),
                 wm_context=dict(data.get("wm_context", {})),
                 decision=dict(data.get("decision", {})),
-                prediction_error_map={
-                    str(k): float(v)
-                    for k, v in data.get("prediction_error_map", {}).items()
-                },
+                prediction_error_map=_floats_only(data.get("prediction_error_map", {})),
             )
         except Exception:
             return cls()

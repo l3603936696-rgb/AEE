@@ -101,9 +101,14 @@ STATE_FIELD_WHITELIST = [
 # ============================================================================
 
 ACTION_TYPE_WHITELIST = [
+    "explore",
     "seek",
     "avoid",
     "comfort",
+    "rest",
+    "repair",
+    "write",
+    "voice",
 ]
 
 

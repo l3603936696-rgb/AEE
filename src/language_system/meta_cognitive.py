@@ -248,17 +248,17 @@ def get_language_intervention(
         )
 
     # 效率整体下降 → 增加探索
+    # 用每条记录的个体效率（而非按词汇聚合的总效率），避免词频膨胀
+    # avg_first 需要高于地板阈值——unresolved 接近 0 时效率必然 ≈ 0
     if total >= 8:
         mid = total // 2
         avg_first = sum(
-            sum(eff_by_word.get(r.get("expression", ""), [0]))
-            for r in recent[:mid]
+            r.get("quenching_efficiency", 0) for r in recent[:mid]
         ) / max(1, mid)
         avg_second = sum(
-            sum(eff_by_word.get(r.get("expression", ""), [0]))
-            for r in recent[mid:]
+            r.get("quenching_efficiency", 0) for r in recent[mid:]
         ) / max(1, total - mid)
-        if avg_second < avg_first * 0.7:
+        if avg_first > 0.01 and avg_second < avg_first * 0.7:
             intervention["exploration_boost"] += 0.08
             logger.info(
                 f"[MetaCognitive] Efficiency decline boost: +0.08 exploration"

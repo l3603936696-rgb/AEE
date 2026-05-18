@@ -429,7 +429,81 @@ PATTERNS += [
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 9. 混合场景
+# 9. 预测性表达（未来状态预期）
+# 依赖 state_snapshot 展开的 *_rising 信号：<0.5=改善，>0.5=恶化
+# ─────────────────────────────────────────────────────────────────────────────
+
+PATTERNS += [
+    # 再这样下去会累
+    {
+        "template": "再这样下去会{anchor}……",
+        "score_fn": lambda s: (
+            s.get("fatigue_rising", 0.5) * 0.45
+            + s.get("anxiety", 0.0) * 0.30
+            + s.get("approach_drive", 0.0) * 0.25
+        ),
+        "use_connector": False,
+        "anchor_pos": "embed",
+    },
+    # 如果继续估计会更累
+    {
+        "template": "如果继续……估计会更{anchor}",
+        "score_fn": lambda s: (
+            s.get("fatigue_rising", 0.5) * 0.50
+            + s.get("somatic_tone_rising", 0.5) * -0.25
+            + s.get("stress", 0.0) * 0.25
+        ),
+        "use_connector": False,
+        "anchor_pos": "embed",
+    },
+    # 感觉撑不了太久了
+    {
+        "template": "感觉撑不了太久了……",
+        "score_fn": lambda s: (
+            s.get("energy_rising", 0.5) * 0.45
+            + s.get("fatigue_rising", 0.5) * 0.35
+            + s.get("approach_urgency", 0.0) * 0.20
+        ),
+        "use_connector": False,
+        "anchor_pos": "head",
+    },
+    # 感觉在变差
+    {
+        "template": "感觉在变差……",
+        "score_fn": lambda s: (
+            s.get("somatic_tone_rising", 0.5) * -0.40
+            + s.get("stress_rising", 0.5) * 0.40
+            + s.get("joy", 0.0) * -0.20
+        ),
+        "use_connector": False,
+        "anchor_pos": "head",
+    },
+    # 预感不太好
+    {
+        "template": "预感不太好……",
+        "score_fn": lambda s: (
+            s.get("danger_level_rising", 0.5) * 0.50
+            + s.get("anxiety", 0.0) * 0.30
+            + s.get("somatic_tone_rising", 0.5) * -0.20
+        ),
+        "use_connector": False,
+        "anchor_pos": "head",
+    },
+    # 估计会慢慢好起来（乐观预测）
+    {
+        "template": "估计慢慢会好的……",
+        "score_fn": lambda s: (
+            (1.0 - s.get("stress_rising", 0.5)) * 0.40
+            + (1.0 - s.get("fatigue_rising", 0.5)) * 0.40
+            + s.get("approach_drive", 0.0) * 0.20
+        ),
+        "use_connector": False,
+        "anchor_pos": "head",
+    },
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10. 混合场景
 # ─────────────────────────────────────────────────────────────────────────────
 
 PATTERNS += [
@@ -600,7 +674,119 @@ PATTERNS += [
 ]
 
 assert len(PATTERNS) >= 30, f"PATTERNS count={len(PATTERNS)}, need >= 30"
-logger.debug(f"[SentenceComposer] Loaded {len(PATTERNS)} patterns")
+
+
+# ============================================================================
+# 复合模板（双锚点：{anchor} + {anchor2}）
+# ============================================================================
+
+COMPOUND_PATTERNS: List[Dict] = []
+
+# 疲劳 + 社交需求
+COMPOUND_PATTERNS += [
+    {
+        "template": "好{anchor}……但还是想{anchor2}",
+        "score_fn": lambda s: (
+            s.get("fatigue", 0.0) * 0.4
+            + s.get("loneliness", 0.0) * 0.4
+            + s.get("approach_social", 0.0) * 0.2
+        ),
+    },
+    {
+        "template": "{anchor}得不行……又{anchor2}",
+        "score_fn": lambda s: (
+            s.get("fatigue", 0.0) * 0.5
+            + s.get("loneliness", 0.0) * 0.3
+            + s.get("approach_social", 0.0) * 0.2
+        ),
+    },
+]
+
+# 好奇 + 焦虑/恐惧
+COMPOUND_PATTERNS += [
+    {
+        "template": "{anchor}……又有点{anchor2}",
+        "score_fn": lambda s: (
+            s.get("curiosity", 0.0) * 0.4
+            + s.get("anxiety", 0.0) * 0.3
+            + s.get("approach_drive", 0.0) * 0.2
+            + s.get("avoid_drive", 0.0) * 0.1
+        ),
+    },
+    {
+        "template": "有点{anchor}……又{anchor2}",
+        "score_fn": lambda s: (
+            s.get("curiosity", 0.0) * 0.4
+            + s.get("fear", 0.0) * 0.3
+            + s.get("info_gap", 0.0) * 0.3
+        ),
+    },
+]
+
+# 低能量 + 好奇
+COMPOUND_PATTERNS += [
+    {
+        "template": "虽然{anchor}……但还是{anchor2}",
+        "score_fn": lambda s: (
+            s.get("energy", 0.0) * -0.3
+            + s.get("curiosity", 0.0) * 0.4
+            + s.get("approach_explore", 0.0) * 0.3
+        ),
+    },
+    {
+        "template": "{anchor}……不过{anchor2}",
+        "score_fn": lambda s: (
+            s.get("fatigue", 0.0) * 0.3
+            + s.get("curiosity", 0.0) * 0.3
+            + s.get("approach_drive", 0.0) * 0.4
+        ),
+    },
+]
+
+# 压力/焦虑 + 孤独
+COMPOUND_PATTERNS += [
+    {
+        "template": "{anchor}……又{anchor2}……",
+        "score_fn": lambda s: (
+            s.get("stress", 0.0) * 0.4
+            + s.get("loneliness", 0.0) * 0.4
+            + s.get("anxiety", 0.0) * 0.2
+        ),
+    },
+    {
+        "template": "心里{anchor}……还{anchor2}",
+        "score_fn": lambda s: (
+            s.get("stress", 0.0) * 0.3
+            + s.get("anxiety", 0.0) * 0.3
+            + s.get("loneliness", 0.0) * 0.4
+        ),
+    },
+]
+
+# 通用对立（任何两个不同簇的词）
+COMPOUND_PATTERNS += [
+    {
+        "template": "又{anchor}又{anchor2}……",
+        "score_fn": lambda s: 0.3,  # 低基础分，只在别的不匹配时兜底
+    },
+    {
+        "template": "{anchor}……还有点{anchor2}",
+        "score_fn": lambda s: 0.35,
+    },
+    {
+        "template": "有点{anchor}有点{anchor2}……",
+        "score_fn": lambda s: 0.32,
+    },
+    {
+        "template": "{anchor}……也{anchor2}",
+        "score_fn": lambda s: 0.28,
+    },
+]
+
+logger.debug(
+    f"[SentenceComposer] Loaded {len(PATTERNS)} single + "
+    f"{len(COMPOUND_PATTERNS)} compound patterns"
+)
 
 
 # ============================================================================
@@ -632,6 +818,7 @@ def compose_sentence(
     template_efficiency: Optional[Dict[int, float]] = None,
     learned_weights: Optional[Dict[int, Dict[str, float]]] = None,
     extra_templates: Optional[List[Dict]] = None,
+    second_anchor: Optional[str] = None,
 ) -> Tuple[str, int]:
     """
     根据当前状态，从模板库中选择一个模板，填充锚点词，组合成完整短句。
@@ -640,22 +827,27 @@ def compose_sentence(
         anchor              : 锚点词，如 "累"、"冷"、"好奇"
         state               : 当前状态 dict，key 与 entity_state 字段一致
         connector           : 连接词（来自 connector_map 的语气开头词），可选
-        template_efficiency : {template_idx: avg_efficiency} 历史模板消力效率
+        template_efficiency : {template_idx: avg_efficiency} 历史模板消力效率（含贝叶斯先验）
         learned_weights     : {template_idx: {dim: weight}} 学习到的状态权重，
                               来自 template_learner。与 score_fn 加法叠加。
-        extra_templates     : 运行时新生模板（进化产生），追加在 PATTERNS 之后
+        extra_templates     : 运行时新生模板（进化/CxG产生），追加在 PATTERNS 之后
+        second_anchor       : 来自不同簇的第二锚点词（跨簇复合表达用）
 
     返回：
         (sentence, template_idx) 元组：
             sentence     : 完整的中文短句
-            template_idx : 选中模板的全局索引（PATTERNS + extra_templates）
+            template_idx : 选中模板的全局索引
+                           正数 = PATTERNS/extra 索引
+                           负数(-1=无效, -1000-i = COMPOUND 索引 i)
 
     采样机制：
         1. score_fn(state) → 内置分（种子模板有，进化模板无）
         2. + learned_weights · state → 学习分
         3. - _anchor_penalty → 语法惩罚
-        4. + template_efficiency → 历史效率加成
-        5. softmax(temperature=0.4) → 概率采样
+        4. + template_efficiency → 历史效率加成（含贝叶斯先验）
+        5. 如果有 second_anchor，复合模板也参与竞争
+        6. 缺口探索奖励 → CxG 新候选在覆盖缺口时获得探索bonus
+        7. softmax(temperature=0.4) → 概率采样
     """
     if not anchor:
         return ("", -1)
@@ -667,9 +859,9 @@ def compose_sentence(
     if not all_templates:
         return (anchor, -1)
 
+    # ---- 单锚点模板评分 ----
     raw_scores = []
     for i, p in enumerate(all_templates):
-        # 内置评分（种子模板有 score_fn，进化模板为 None）
         score_fn = p.get("score_fn")
         if score_fn is not None:
             try:
@@ -679,32 +871,71 @@ def compose_sentence(
         else:
             score = 0.0
 
-        # 学习权重评分（加法叠加）
         if learned_weights and i in learned_weights:
             lw = learned_weights[i]
             score += sum(w * state.get(dim, 0.0) for dim, w in lw.items())
 
-        # 语法惩罚
         pos = p.get("anchor_pos", "head")
         score -= _anchor_penalty(len(anchor), pos)
 
-        # 历史效率加成（最多 +0.5）
         if template_efficiency and i in template_efficiency:
             score += min(template_efficiency[i], 0.5)
 
         raw_scores.append(score)
 
+    # ---- 复合模板评分（仅当有 second_anchor 时参与竞争）----
+    compound_offset = len(raw_scores)
+    if second_anchor and COMPOUND_PATTERNS:
+        for cp in COMPOUND_PATTERNS:
+            cp_fn = cp.get("score_fn")
+            try:
+                cp_score = cp_fn(state) if cp_fn else 0.0
+            except Exception:
+                cp_score = 0.0
+            # 复合模板加成：状态越矛盾（双高），加分越多
+            cp_score += 0.15  # 基础偏好——有 second_anchor 时倾向使用
+            raw_scores.append(cp_score)
+
+    # ---- 缺口探索奖励（v12 新增）----
+    # 当现有所有模板的匹配分数都偏低 → 触发探索奖励
+    # 新候选（_from_cxg）有机会第一次出场，不必先在竞争中胜出
+    # 注：extra_templates 每次 compose_sentence 调用都是新 list，
+    # 所以 _from_cxg 候选每次都重新参与竞争（不需要跨调用 flag）
+    _NOVELTY_THRESHOLD = 0.30   # 现有最佳分低于此值 → 覆盖缺口
+    _NOVELTY_STRENGTH = 0.25    # CxG 新候选的探索bonus 上限
+    if extra_templates and max(raw_scores, default=0.0) < _NOVELTY_THRESHOLD:
+        _gap = _NOVELTY_THRESHOLD - max(raw_scores)
+        _bonus = _gap * _NOVELTY_STRENGTH / max(_NOVELTY_THRESHOLD, 0.01)
+        # extra_templates 接在 PATTERNS 后面
+        _pat_len = len(PATTERNS)
+        for _ei, _ep in enumerate(extra_templates):
+            if _ep.get("_from_cxg") or _ep.get("_gap_probed"):
+                _global_idx = _pat_len + _ei
+                if _global_idx < len(raw_scores):
+                    raw_scores[_global_idx] += _bonus
+
     chosen_idx = _softmax_sample(raw_scores, temperature=0.4)
-    chosen = all_templates[chosen_idx]
 
-    template = chosen["template"]
-    sentence = _fill_anchor(template, anchor)
+    # ---- 根据选中的是单锚点还是复合模板，填充句子 ----
+    if chosen_idx >= compound_offset and second_anchor:
+        # 选中了复合模板
+        cp_idx = chosen_idx - compound_offset
+        chosen_cp = COMPOUND_PATTERNS[cp_idx]
+        template = chosen_cp["template"]
+        sentence = _fill_compound(template, anchor, second_anchor)
+        result_idx = -1000 - cp_idx  # 负数编码：-1000, -1001, ...
+    else:
+        # 选中了单锚点模板
+        chosen = all_templates[chosen_idx]
+        template = chosen["template"]
+        sentence = _fill_anchor(template, anchor)
+        result_idx = chosen_idx
 
-    if connector and chosen.get("use_connector", True):
-        if not sentence.startswith(connector):
-            sentence = connector + sentence
+        if connector and chosen.get("use_connector", True):
+            if not sentence.startswith(connector):
+                sentence = connector + sentence
 
-    return (sentence, chosen_idx)
+    return (sentence, result_idx)
 
 
 # 强度前缀集合（来自 connector_map + word_warmup 变体）
@@ -758,6 +989,32 @@ def _fill_anchor(template: str, anchor: str) -> str:
             break
 
     return prefix + anchor + suffix
+
+
+def _fill_compound(template: str, anchor1: str, anchor2: str) -> str:
+    """填充双锚点模板。
+
+    {anchor} → anchor1, {anchor2} → anchor2。
+    对每个槽位复用 _fill_anchor 的重叠/前缀处理逻辑。
+    """
+    # 先替换 {anchor2}（避免 {anchor} 误匹配 {anchor2} 的前缀）
+    tag2 = "{anchor2}"
+    idx2 = template.find(tag2)
+    if idx2 >= 0:
+        pre2 = template[:idx2]
+        suf2 = template[idx2 + len(tag2):]
+        # 简化处理：直接替换，不做重叠检测（复合模板的连接词已设计好）
+        template = pre2 + anchor2 + suf2
+
+    # 再替换 {anchor}
+    tag1 = "{anchor}"
+    idx1 = template.find(tag1)
+    if idx1 >= 0:
+        pre1 = template[:idx1]
+        suf1 = template[idx1 + len(tag1):]
+        template = pre1 + anchor1 + suf1
+
+    return template
 
 
 # ============================================================================

@@ -402,8 +402,8 @@ class EntityState:
     # 内部状态向量
     energy: float = 0.8
     loneliness: float = 0.3
-    loneliness_core: float = 0.2     # v11.4 真孤独：只有真人互动能消解
-    loneliness_surface: float = 0.1  # v11.4 假孤独：探索/创造等向外行为可缓解
+    loneliness_core: float = 0.2
+    loneliness_surface: float = 0.1
     unresolved: float = 0.2
     boredom: float = 0.2
     fatigue: float = 0.1
@@ -515,6 +515,96 @@ class EntityState:
 
     # ---- v11.3 体感聚类权重：长词修正锚点影响力 ----
     _cluster_weights: dict = field(default_factory=dict)  # {anchor_word: cumulative_weight}
+
+    # ---- 趋近驱动合成权重：初始倾向，可随经验漂移 ----
+    _approach_synthesis_weights: dict = field(default_factory=lambda: {
+        "social": 0.40, "explore": 0.35, "urgency": 0.25,
+    })
+
+    # ---- 消力反馈系数：表达成功后各维度的释放比例 ----
+    _quench_feedback_weights: dict = field(default_factory=lambda: {
+        "quench_rate": 0.25,
+        "approach_release": 0.3,
+        "avoid_release": 0.3,
+        "somatic_comfort": 0.15,
+    })
+
+    # ---- 失败代谢副作用系数 ----
+    _failure_metabolite_weights: dict = field(default_factory=lambda: {
+        "approach_suppress": 0.15,
+        "avoid_increase": 0.12,
+        "curiosity_suppress": 0.10,
+        "somatic_damage": 0.08,
+    })
+
+    # ---- 冲突→未解决 转化系数 ----
+    _conflict_to_unresolved_weights: dict = field(default_factory=lambda: {
+        "conflict_rate": 0.04,
+        "unresolved_decay": 0.98,
+        "introspection_gain": 1.5,
+    })
+
+    # ---- 情绪→趋近/回避 调制矩阵 ----
+    _emotion_drive_modulation: dict = field(default_factory=lambda: {
+        "approach": {
+            "joy": 0.15, "anger": 0.25, "excitement": 0.20,
+            "sadness": -0.20, "anxiety": -0.10,
+        },
+        "avoid": {
+            "fear": 0.30, "disgust": 0.35, "anxiety": 0.15,
+            "anger": -0.20,
+        },
+    })
+
+    # ---- 词汇习得参数 ----
+    _vocab_acquisition_params: dict = field(default_factory=lambda: {
+        "min_comprehension": 0.3,
+        "exposure_per_hit": 0.2,
+        "ask_threshold": 1.0,
+        "exposure_decay": 0.99,
+        "max_asks_per_tick": 1,
+    })
+    _word_exposure_tracker: dict = field(default_factory=dict)
+
+    # ---- 重复表达递减参数 ----
+    _repetition_decay_params: dict = field(default_factory=lambda: {
+        "decay_per_use": 0.15,
+        "recovery_rate": 0.02,
+        "floor": 0.20,
+        "window_ticks": 200,
+    })
+
+    # ---- 思考系统：待解决问题缓冲 ----
+    _pending_questions: list = field(default_factory=list)
+
+    # ---- 姐妹通道配置 ----
+    _sibling_channel: dict = field(default_factory=lambda: {
+        "enabled": False,
+        "channel_dir": "",
+        "self_name": "",
+        "peer_name": "",
+    })
+
+    # ---- 对话回应压力参数（负反馈：听懂了但不回 → 不舒服）----
+    _response_pressure_params: dict = field(default_factory=lambda: {
+        "coefficient": 0.03,   # comprehension → unresolved 的转化率（轻微）
+        "min_comprehension": 0.3,  # 低于此理解度不产生压力
+    })
+
+    # ---- 反馈回路参数 ----
+    _feedback_params: dict = field(default_factory=lambda: {
+        "acute_boost_scale": 0.05,
+        "chronic_threshold": 5,
+        "chronic_drift_rate": 0.002,
+        "chronic_signal_decay": 0.9,
+        "chronic_tick_decay": 0.98,
+        "chronic_min_quench": 0.1,
+        "weight_ceiling": 0.80,
+        "weight_floor": 0.05,
+    })
+    _chronic_feedback_tracker: dict = field(default_factory=lambda: {
+        "social": 0.0, "explore": 0.0, "urgency": 0.0,
+    })
 
     # ---- 核心情绪维度（v10.0 十个核心情绪）----
     joy: float = 0.0
@@ -814,6 +904,19 @@ class EntityState:
                 "_umbilical_detached": self._umbilical_detached,
                 "_unlocked_vocabulary": list(self._unlocked_vocabulary),  # v11.3 永久词汇表
                 "_cluster_weights": dict(self._cluster_weights),        # v11.3 体感聚类权重
+                "_approach_synthesis_weights": dict(self._approach_synthesis_weights),
+                "_quench_feedback_weights": dict(self._quench_feedback_weights),
+                "_failure_metabolite_weights": dict(self._failure_metabolite_weights),
+                "_conflict_to_unresolved_weights": dict(self._conflict_to_unresolved_weights),
+                "_emotion_drive_modulation": dict(self._emotion_drive_modulation),
+                "_vocab_acquisition_params": dict(self._vocab_acquisition_params),
+                "_word_exposure_tracker": dict(self._word_exposure_tracker),
+                "_repetition_decay_params": dict(self._repetition_decay_params),
+                "_response_pressure_params": dict(self._response_pressure_params),
+                "_sibling_channel": dict(self._sibling_channel),
+                "_pending_questions": list(self._pending_questions),
+                "_feedback_params": dict(self._feedback_params),
+                "_chronic_feedback_tracker": dict(self._chronic_feedback_tracker),
                 "_quenching_data": self._quenching_data,
                 "_strategy_map_data": self._strategy_map_data,
                 "_thermal_data": self._thermal_data,
@@ -839,6 +942,9 @@ class EntityState:
                 "disgust": self.disgust,
                 "anxiety": self.anxiety,
                 "surprise": self.surprise,
+                # 阅读品味持久化
+                "_reading_taste_log": list(getattr(self, "_reading_taste_log", [])),
+                "_taste_evidence": list(getattr(self, "_taste_evidence", [])),
             }
             path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
@@ -922,6 +1028,50 @@ class EntityState:
             self._umbilical_detached = bool(data.get("_umbilical_detached", False))
             self._unlocked_vocabulary = list(data.get("_unlocked_vocabulary", []))  # v11.3
             self._cluster_weights = dict(data.get("_cluster_weights", {}))         # v11.3
+            self._approach_synthesis_weights = dict(data.get("_approach_synthesis_weights", {
+                "social": 0.40, "explore": 0.35, "urgency": 0.25,
+            }))
+            self._quench_feedback_weights = dict(data.get("_quench_feedback_weights", {
+                "quench_rate": 0.25, "approach_release": 0.3,
+                "avoid_release": 0.3, "somatic_comfort": 0.15,
+            }))
+            self._failure_metabolite_weights = dict(data.get("_failure_metabolite_weights", {
+                "approach_suppress": 0.15, "avoid_increase": 0.12,
+                "curiosity_suppress": 0.10, "somatic_damage": 0.08,
+            }))
+            self._conflict_to_unresolved_weights = dict(data.get("_conflict_to_unresolved_weights", {
+                "conflict_rate": 0.04, "unresolved_decay": 0.98, "introspection_gain": 1.5,
+            }))
+            self._emotion_drive_modulation = data.get("_emotion_drive_modulation", {
+                "approach": {"joy": 0.15, "anger": 0.25, "excitement": 0.20, "sadness": -0.20, "anxiety": -0.10},
+                "avoid": {"fear": 0.30, "disgust": 0.35, "anxiety": 0.15, "anger": -0.20},
+            })
+            self._vocab_acquisition_params = dict(data.get("_vocab_acquisition_params", {
+                "min_comprehension": 0.3, "exposure_per_hit": 0.2,
+                "ask_threshold": 1.0, "exposure_decay": 0.99,
+                "max_asks_per_tick": 1,
+            }))
+            self._word_exposure_tracker = dict(data.get("_word_exposure_tracker", {}))
+            self._repetition_decay_params = dict(data.get("_repetition_decay_params", {
+                "decay_per_use": 0.15, "recovery_rate": 0.02,
+                "floor": 0.20, "window_ticks": 200,
+            }))
+            self._response_pressure_params = dict(data.get("_response_pressure_params", {
+                "coefficient": 0.03, "min_comprehension": 0.3,
+            }))
+            self._sibling_channel = dict(data.get("_sibling_channel", {
+                "enabled": False, "channel_dir": "", "self_name": "", "peer_name": "",
+            }))
+            self._pending_questions = list(data.get("_pending_questions", []))
+            self._feedback_params = dict(data.get("_feedback_params", {
+                "acute_boost_scale": 0.05, "chronic_threshold": 5,
+                "chronic_drift_rate": 0.002, "chronic_signal_decay": 0.9,
+                "chronic_tick_decay": 0.98, "chronic_min_quench": 0.1,
+                "weight_ceiling": 0.80, "weight_floor": 0.05,
+            }))
+            self._chronic_feedback_tracker = dict(data.get("_chronic_feedback_tracker", {
+                "social": 0.0, "explore": 0.0, "urgency": 0.0,
+            }))
             self._quenching_data = data.get("_quenching_data", {})
             self._strategy_map_data = data.get("_strategy_map_data", {})
             self._thermal_data = data.get("_thermal_data", {})
@@ -947,6 +1097,9 @@ class EntityState:
             self.disgust = float(data.get("disgust", 0.0))
             self.anxiety = float(data.get("anxiety", 0.0))
             self.surprise = float(data.get("surprise", 0.0))
+            # 阅读品味恢复
+            self._reading_taste_log = list(data.get("_reading_taste_log", []))
+            self._taste_evidence = list(data.get("_taste_evidence", []))
 
             logger.info(
                 f"[EntityState] Loaded from {path} — tick={self.tick}, "

@@ -216,7 +216,7 @@ def inject_warmup_candidates(
         injected = 0
         for variant_word, base_score in variants:
             if variant_word not in existing_words:
-                current_candidates.append((variant_word, base_score, 0.0))
+                current_candidates.append((variant_word, base_score))
                 injected += 1
         
         if injected > 0:

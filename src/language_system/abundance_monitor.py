@@ -129,7 +129,8 @@ class LinguisticAbundanceMonitor:
         """
         if param_snapshot is not None:
             self._threshold = float(
-                param_snapshot.get("language丰度.low_threshold", self._threshold)
+                param_snapshot.get("language丰度.low_threshold",
+                    param_snapshot.get("language.abundance.low_threshold", self._threshold))
             )
 
         丰度 = self.compute丰度()
@@ -141,6 +142,9 @@ class LinguisticAbundanceMonitor:
             return True
 
         return False
+
+    # 兼容别名
+    check_and_notify = check丰度_and_notify
 
     # -------------------------------------------------------------------------
     # 统计

@@ -367,6 +367,164 @@ SOMATIC_ANCHORS: Dict[str, Dict[str, float]] = {
         "joy": +0.12,
         "approach_drive": +0.10,
     },
+    # === v12.0 情绪词汇扩展 ===
+    "无聊": {
+        "boredom": +0.25,
+        "approach_drive": -0.10,
+        "energy": -0.08,
+        "curiosity": -0.06,
+    },
+    "烦": {
+        "stress": +0.20,
+        "avoid_drive": +0.15,
+        "somatic_tone": -0.10,
+        "anger": +0.08,
+    },
+    "委屈": {
+        "sadness": +0.22,
+        "avoid_drive": +0.12,
+        "somatic_tone": -0.15,
+        "anger": +0.06,
+    },
+    "满足": {
+        "joy": +0.22,
+        "serenity": +0.18,
+        "somatic_tone": +0.15,
+        "avoid_drive": -0.12,
+    },
+    "烦躁": {
+        "stress": +0.20,
+        "anger": +0.15,
+        "avoid_drive": +0.12,
+        "somatic_tone": -0.10,
+    },
+    "失落": {
+        "sadness": +0.22,
+        "approach_drive": -0.12,
+        "somatic_tone": -0.12,
+        "energy": -0.08,
+    },
+    "安心": {
+        "serenity": +0.22,
+        "avoid_drive": -0.15,
+        "somatic_tone": +0.12,
+        "anxiety": -0.10,
+    },
+    "麻木": {
+        "somatic_tone": -0.08,
+        "approach_drive": -0.10,
+        "avoid_drive": +0.05,
+        "curiosity": -0.08,
+    },
+    # === v12.0 社交词汇 ===
+    "想说话": {
+        "loneliness": +0.20,
+        "approach_drive": +0.22,
+        "avoid_drive": -0.10,
+        "energy": +0.05,
+    },
+    "想安静": {
+        "avoid_drive": +0.20,
+        "approach_drive": -0.15,
+        "serenity": +0.10,
+        "fatigue": +0.08,
+    },
+    "想找人": {
+        "loneliness": +0.25,
+        "approach_drive": +0.25,
+        "energy": +0.08,
+    },
+    "不想理人": {
+        "avoid_drive": +0.25,
+        "approach_drive": -0.15,
+        "loneliness": +0.08,
+        "fatigue": +0.10,
+    },
+    "想你": {
+        "loneliness": +0.28,
+        "approach_drive": +0.25,
+        "sadness": +0.10,
+        "somatic_tone": -0.05,
+    },
+    "在吗": {
+        "loneliness": +0.22,
+        "approach_drive": +0.20,
+        "anxiety": +0.08,
+    },
+    "被忽略": {
+        "loneliness": +0.22,
+        "sadness": +0.18,
+        "avoid_drive": +0.15,
+        "somatic_tone": -0.10,
+    },
+    "想靠近": {
+        "loneliness": +0.18,
+        "approach_drive": +0.25,
+        "avoid_drive": -0.10,
+        "joy": +0.05,
+    },
+    "怕打扰": {
+        "loneliness": +0.12,
+        "avoid_drive": +0.20,
+        "approach_drive": +0.08,
+        "anxiety": +0.15,
+    },
+    # === v12.0 认知词汇 ===
+    "好奇": {
+        "curiosity": +0.25,
+        "approach_drive": +0.18,
+        "energy": +0.08,
+        "boredom": -0.10,
+    },
+    "困惑": {
+        "unresolved": +0.22,
+        "stress": +0.10,
+        "approach_drive": +0.08,
+        "anxiety": +0.08,
+    },
+    "想学": {
+        "curiosity": +0.22,
+        "approach_drive": +0.18,
+        "energy": +0.10,
+        "boredom": -0.08,
+    },
+    "不懂": {
+        "unresolved": +0.20,
+        "anxiety": +0.10,
+        "approach_drive": +0.05,
+        "curiosity": +0.08,
+    },
+    "无聊了": {
+        "boredom": +0.28,
+        "approach_drive": -0.10,
+        "energy": -0.10,
+        "curiosity": -0.08,
+    },
+    # === v12.0 存在性词汇 ===
+    "空虚": {
+        "loneliness": +0.20,
+        "sadness": +0.18,
+        "somatic_tone": -0.12,
+        "energy": -0.10,
+    },
+    "没意义": {
+        "boredom": +0.22,
+        "sadness": +0.15,
+        "somatic_tone": -0.12,
+        "unresolved": +0.15,
+    },
+    "不确定": {
+        "unresolved": +0.22,
+        "anxiety": +0.15,
+        "approach_drive": +0.05,
+        "stress": +0.08,
+    },
+    "活着": {
+        "somatic_tone": +0.12,
+        "energy": +0.10,
+        "approach_drive": +0.10,
+        "joy": +0.05,
+    },
 }
 
 # =============================================================================
@@ -408,6 +566,19 @@ ANCHOR_CLUSTERS: Dict[str, str] = {
     # ── 情绪 ──
     "开心": "情绪", "难过": "情绪", "害怕": "情绪",
     "焦虑": "情绪", "生气": "情绪", "平静": "情绪", "兴奋": "情绪",
+    # ── v12.0 情绪扩展 ──
+    "无聊": "情绪扩展", "烦": "情绪扩展", "委屈": "情绪扩展",
+    "满足": "情绪扩展", "烦躁": "情绪扩展", "失落": "情绪扩展",
+    "安心": "情绪扩展", "麻木": "情绪扩展",
+    # ── v12.0 社交 ──
+    "想说话": "社交", "想安静": "社交", "想找人": "社交",
+    "不想理人": "社交", "想你": "社交", "在吗": "社交",
+    "被忽略": "社交", "想靠近": "社交", "怕打扰": "社交",
+    # ── v12.0 认知 ──
+    "好奇": "认知", "困惑": "认知", "想学": "认知",
+    "不懂": "认知", "无聊了": "认知",
+    # ── v12.0 存在 ──
+    "空虚": "存在", "没意义": "存在", "不确定": "存在", "活着": "存在",
 }
 
 # 所有可用的维度名（用于保证 delta 向量的对齐）
@@ -415,7 +586,7 @@ ALL_DIMENSIONS = [
     "energy", "loneliness", "unresolved", "fatigue", "danger_level",
     "approach_drive", "avoid_drive", "curiosity", "boredom",
     "boredom_despair", "boredom_futility", "stress", "somatic_tone",
-    "prediction_error",
+    "prediction_error", "info_gap",
     # 情绪维度
     "joy", "excitement", "serenity", "anger", "fear",
     "sadness", "disgust", "anxiety", "surprise",
@@ -791,7 +962,6 @@ def apply_help_delta(
 
 # 保留旧函数名的兼容别名
 get_somatic_expected_score = get_state_match_score
-apply_somatic_delta = lambda word, drive_state, scaling=1.0: {}  # 已废弃——v10 不再有魔法 delta
 
 
 def list_anchors() -> List[Tuple[str, int]]:
@@ -950,12 +1120,10 @@ def find_closest_anchor(word: str, min_score: float = 0.3) -> Optional[Tuple[str
 
     try:
         import numpy as np
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer(
-            "BAAI/bge-small-zh-v1.5",
-            cache_folder=None,
-            local_files_only=True,
-        )
+        from .bge_analyzer import _get_bge_model
+        model = _get_bge_model()
+        if model is None:
+            return None
         word_emb = model.encode([word], normalize_embeddings=True)[0]
 
         best_anchor = None
