@@ -516,6 +516,12 @@ class EntityState:
     # ---- v11.3 体感聚类权重：长词修正锚点影响力 ----
     _cluster_weights: dict = field(default_factory=dict)  # {anchor_word: cumulative_weight}
 
+    # ================================================================
+    # 转换系数（参数）：决定"外部输入如何转为内部变化"
+    # 初始值从 param_store.json 同步，可被风化系统长期漂移
+    # 对应 param_store.json 的 "conversion" 段
+    # ================================================================
+
     # ---- 趋近驱动合成权重：初始倾向，可随经验漂移 ----
     _approach_synthesis_weights: dict = field(default_factory=lambda: {
         "social": 0.40, "explore": 0.35, "urgency": 0.25,
@@ -564,6 +570,11 @@ class EntityState:
         "exposure_decay": 0.99,
         "max_asks_per_tick": 1,
     })
+    # ================================================================
+    # 运行时追踪器（状态）：随 tick 实时变化的累积器
+    # 不进入 param_store，不可漂移
+    # ================================================================
+
     _word_exposure_tracker: dict = field(default_factory=dict)
 
     # ---- 重复表达递减参数 ----
@@ -579,10 +590,10 @@ class EntityState:
 
     # ---- 姐妹通道配置 ----
     _sibling_channel: dict = field(default_factory=lambda: {
-        "enabled": False,
-        "channel_dir": "",
-        "self_name": "",
-        "peer_name": "",
+        "enabled": True,
+        "channel_dir": "E:/sibling_channel",
+        "self_name": "xia",
+        "peer_name": "knuonuo",
     })
 
     # ---- 对话回应压力参数（负反馈：听懂了但不回 → 不舒服）----
@@ -605,6 +616,11 @@ class EntityState:
     _chronic_feedback_tracker: dict = field(default_factory=lambda: {
         "social": 0.0, "explore": 0.0, "urgency": 0.0,
     })
+
+    # ---- 因果观测缓冲：(输入来源, 状态delta) 配对 ----
+    # 每 tick 记录一条，用于学习"什么输入导致什么状态变化"
+    _causal_observations: list = field(default_factory=list)  # max 200 entries
+    _causal_associations: dict = field(default_factory=dict)  # 学到的因果关联
 
     # ---- 核心情绪维度（v10.0 十个核心情绪）----
     joy: float = 0.0
@@ -917,6 +933,8 @@ class EntityState:
                 "_pending_questions": list(self._pending_questions),
                 "_feedback_params": dict(self._feedback_params),
                 "_chronic_feedback_tracker": dict(self._chronic_feedback_tracker),
+                "_causal_observations": list(self._causal_observations[-200:]),
+                "_causal_associations": dict(self._causal_associations),
                 "_quenching_data": self._quenching_data,
                 "_strategy_map_data": self._strategy_map_data,
                 "_thermal_data": self._thermal_data,
@@ -1060,7 +1078,8 @@ class EntityState:
                 "coefficient": 0.03, "min_comprehension": 0.3,
             }))
             self._sibling_channel = dict(data.get("_sibling_channel", {
-                "enabled": False, "channel_dir": "", "self_name": "", "peer_name": "",
+                "enabled": True, "channel_dir": "E:/sibling_channel",
+                "self_name": "xia", "peer_name": "knuonuo",
             }))
             self._pending_questions = list(data.get("_pending_questions", []))
             self._feedback_params = dict(data.get("_feedback_params", {
@@ -1072,6 +1091,8 @@ class EntityState:
             self._chronic_feedback_tracker = dict(data.get("_chronic_feedback_tracker", {
                 "social": 0.0, "explore": 0.0, "urgency": 0.0,
             }))
+            self._causal_observations = list(data.get("_causal_observations", []))
+            self._causal_associations = dict(data.get("_causal_associations", {}))
             self._quenching_data = data.get("_quenching_data", {})
             self._strategy_map_data = data.get("_strategy_map_data", {})
             self._thermal_data = data.get("_thermal_data", {})

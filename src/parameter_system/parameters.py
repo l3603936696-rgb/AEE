@@ -73,6 +73,11 @@ PARAM_CATEGORIES: Dict[str, str] = {
         "v7.0 语言系统参数：消力效率、自适应温控、六大主权。"
         "包含驱动力场语言表达的闭环测量与自适应调控。"
     ),
+    "conversion": (
+        "转换系数：决定'外部输入如何转为内部状态变化'的乘子。"
+        "是真正的人格参数（innate），可被风化系统长期漂移。"
+        "对应 EntityState 上的 9 个 _*_weights / _*_params dict。"
+    ),
 }
 
 
@@ -317,6 +322,75 @@ LANGUAGE: Dict[str, float] = {
 }
 
 # ============================================================================
+# O. conversion — 转换系数（EntityState 上的 9 个 _*_weights / _*_params dict）
+# ============================================================================
+# 展平为 dot-path，初始值与 EntityState 硬编码默认值完全一致。
+# 风化系统可漂移其中被注册的子集。
+
+CONVERSION: Dict[str, Any] = {
+    # ---- 趋近驱动合成权重 → _approach_synthesis_weights ----
+    "conversion.approach_synthesis.social": 0.40,
+    "conversion.approach_synthesis.explore": 0.35,
+    "conversion.approach_synthesis.urgency": 0.25,
+
+    # ---- 消力反馈系数 → _quench_feedback_weights ----
+    "conversion.quench_feedback.quench_rate": 0.25,
+    "conversion.quench_feedback.approach_release": 0.30,
+    "conversion.quench_feedback.avoid_release": 0.30,
+    "conversion.quench_feedback.somatic_comfort": 0.15,
+
+    # ---- 失败代谢副作用 → _failure_metabolite_weights ----
+    "conversion.failure_metabolite.approach_suppress": 0.15,
+    "conversion.failure_metabolite.avoid_increase": 0.12,
+    "conversion.failure_metabolite.curiosity_suppress": 0.10,
+    "conversion.failure_metabolite.somatic_damage": 0.08,
+
+    # ---- 冲突→未解决转化 → _conflict_to_unresolved_weights ----
+    "conversion.conflict_to_unresolved.conflict_rate": 0.04,
+    "conversion.conflict_to_unresolved.unresolved_decay": 0.98,
+    "conversion.conflict_to_unresolved.introspection_gain": 1.5,
+
+    # ---- 情绪→趋近/回避调制 → _emotion_drive_modulation ----
+    "conversion.emotion_drive_mod.approach.joy": 0.15,
+    "conversion.emotion_drive_mod.approach.anger": 0.25,
+    "conversion.emotion_drive_mod.approach.excitement": 0.20,
+    "conversion.emotion_drive_mod.approach.sadness": -0.20,
+    "conversion.emotion_drive_mod.approach.anxiety": -0.10,
+    "conversion.emotion_drive_mod.avoid.fear": 0.30,
+    "conversion.emotion_drive_mod.avoid.disgust": 0.35,
+    "conversion.emotion_drive_mod.avoid.anxiety": 0.15,
+    "conversion.emotion_drive_mod.avoid.anger": -0.20,
+
+    # ---- 词汇习得 → _vocab_acquisition_params ----
+    "conversion.vocab_acquisition.min_comprehension": 0.3,
+    "conversion.vocab_acquisition.exposure_per_hit": 0.2,
+    "conversion.vocab_acquisition.ask_threshold": 1.0,
+    "conversion.vocab_acquisition.exposure_decay": 0.99,
+    "conversion.vocab_acquisition.max_asks_per_tick": 1,
+
+    # ---- 重复递减 → _repetition_decay_params ----
+    "conversion.repetition_decay.decay_per_use": 0.15,
+    "conversion.repetition_decay.recovery_rate": 0.02,
+    "conversion.repetition_decay.floor": 0.20,
+    "conversion.repetition_decay.window_ticks": 200,
+
+    # ---- 回应压力 → _response_pressure_params ----
+    "conversion.response_pressure.coefficient": 0.03,
+    "conversion.response_pressure.min_comprehension": 0.3,
+
+    # ---- 反馈回路 → _feedback_params ----
+    "conversion.feedback_loop.acute_boost_scale": 0.05,
+    "conversion.feedback_loop.chronic_threshold": 5,
+    "conversion.feedback_loop.chronic_drift_rate": 0.002,
+    "conversion.feedback_loop.chronic_signal_decay": 0.9,
+    "conversion.feedback_loop.chronic_tick_decay": 0.98,
+    "conversion.feedback_loop.chronic_min_quench": 0.1,
+    "conversion.feedback_loop.weight_ceiling": 0.80,
+    "conversion.feedback_loop.weight_floor": 0.05,
+}
+
+
+# ============================================================================
 # 合并为全局默认参数表
 # ============================================================================
 
@@ -335,6 +409,7 @@ PARAM_DEFAULTS: Dict[str, Any] = {
     "emotion_projection": EMOTION_PROJECTION,
     "emotion": EMOTION,
     "language": LANGUAGE,
+    "conversion": CONVERSION,
 }
 
 

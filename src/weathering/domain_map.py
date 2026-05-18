@@ -11,17 +11,28 @@ DOMAIN_PARAM_SCOPE: Dict[str, FrozenSet[str]] = {
         "personality.introverted_bias",
         "personality.social_risk_weight",
         "personality.extroverted_bias",
+        "conversion.approach_synthesis.social",
+        "conversion.failure_metabolite.approach_suppress",
+        "conversion.failure_metabolite.avoid_increase",
     }),
     "information": frozenset({
         "web_search.info_hunger_threshold",
         "personality.novelty_reward",
+        "conversion.approach_synthesis.explore",
     }),
     "survival": frozenset({
         "decision.survival_override_threshold",
         "personality.recovery_rate",
     }),
     "expression": frozenset({
-        "llm.temperature",
+        "conversion.quench_feedback.quench_rate",
+    }),
+    "emotion": frozenset({
+        "conversion.emotion_drive_mod.approach.joy",
+        "conversion.emotion_drive_mod.approach.anger",
+        "conversion.emotion_drive_mod.avoid.fear",
+        "conversion.emotion_drive_mod.avoid.disgust",
+        "conversion.conflict_to_unresolved.conflict_rate",
     }),
 }
 

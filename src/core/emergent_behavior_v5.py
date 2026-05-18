@@ -76,6 +76,16 @@ ACTION_DOMINANTS: Dict[str, str] = {
     "avoid": "danger", "idle": "tension",
 }
 
+# target_locked 无效值映射（映射到空字符串，使 or 回退到默认 target）
+_INVALID_LOCKS: Dict = {"none": "", "": "", None: ""}
+
+# 优先级提升：(drive_key, weight)
+_BOOST_KEYS: Dict[str, tuple] = {
+    "seek": ("loneliness", 0.2),
+    "repair": ("repair", 0.3),
+    "rest": ("fatigue", 0.15),
+}
+
 
 # ============================================================================
 # 世界模型修复信心（两个版本共用）
@@ -131,7 +141,7 @@ def compute_v5_fallback(entity_core, snap) -> _V5EmergentResult:
 
     特点：
         - 排序 argmax 选择动作（离散选择）
-        - 代谢物硬路由（seek → comfort → rest）
+        - 代谢物通过 drive_vector 连续调节（无硬路由）
         - 无 behavior_vector 输出
     """
     drives = compute_drive_vector(entity_core)
@@ -175,43 +185,29 @@ def compute_v5_fallback(entity_core, snap) -> _V5EmergentResult:
 
     action_type = PRIMARY_ACTION.get(primary_dim, "idle")
 
-    metabolite = getattr(entity_core, "failure_metabolite", 0.0)
-    if action_type == "seek":
-        if metabolite > 0.3:
-            action_type = "rest"
-            dominant = "metabolite_constraint"
-        elif metabolite > 0.1:
-            action_type = "comfort"
-            dominant = "metabolite_constraint"
-        else:
-            dominant = ACTION_DOMINANTS.get(action_type, "tension")
-    else:
-        dominant = ACTION_DOMINANTS.get(action_type, "tension")
+    # 代谢物效果已在 compute_drive_vector 中连续体现：
+    # loneliness -= metabolite * 0.6, fatigue += metabolite * 0.3
+    # 无需二次门控覆盖 action_type
+    dominant = ACTION_DOMINANTS.get(action_type, "tension")
 
     priority = primary_pressure
-    boost = 0.0
-    if action_type == "seek":
-        boost = drives["loneliness"] * 0.2
-    elif action_type == "repair":
-        boost = drives["repair"] * 0.3
-    elif action_type == "rest":
-        boost = drives["fatigue"] * 0.15
+    _bk = _BOOST_KEYS.get(action_type, ("", 0.0))
+    boost = drives.get(_bk[0], 0.0) * _bk[1]
     priority = min(1.0, priority + boost)
 
     target = ACTION_TARGETS.get(action_type, "")
     target_locked = getattr(entity_core, "target_locked", None)
-    if target_locked and target_locked != "none":
-        target = target_locked
+    _valid_lock = _INVALID_LOCKS.get(target_locked, target_locked)
+    target = _valid_lock or target
 
-    suggested_tool = ""
-    if action_type == "repair":
-        wm_conf = _get_wm_repair_confidence(entity_core)
-        ask_weight = max(0.0, 1.0 - wm_conf * 2.0)
-        shell_weight = max(0.0, (wm_conf - 0.3) * 2.5)
-        if ask_weight > shell_weight:
-            suggested_tool = "ask_hermes"
-        elif shell_weight > 0.1:
-            suggested_tool = "shell_run"
+    _repair_signal = drives.get("repair", 0.0)
+    wm_conf = _get_wm_repair_confidence(entity_core)
+    _tool_weights = {
+        "ask_hermes": max(0.0, 1.0 - wm_conf * 2.0) * _repair_signal,
+        "shell_run":  max(0.0, (wm_conf - 0.3) * 2.5) * _repair_signal,
+        "":           1e-6,
+    }
+    suggested_tool = max(_tool_weights, key=_tool_weights.get)
 
     return _V5EmergentResult(
         action_type=action_type,

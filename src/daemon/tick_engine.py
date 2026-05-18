@@ -312,6 +312,25 @@ class TickEngine:
                     self.entity.to_state_snapshot(),
                 )
                 self._tick_count += 1
+                # ---- 因果观测（train_only: source 始终 "none"）----
+                try:
+                    _CAUSAL_DIMS_T = (
+                        "energy", "loneliness", "fatigue", "boredom", "stress",
+                        "info_gap", "unresolved", "approach_drive", "avoid_drive",
+                        "curiosity", "joy", "fear", "sadness", "anxiety",
+                    )
+                    _post_t = self.entity.to_state_snapshot()
+                    _delta_t = {}
+                    for _cd in _CAUSAL_DIMS_T:
+                        _delta_t[_cd] = round(
+                            float(_post_t.get(_cd, 0)) - float(_prev_state_snapshot.get(_cd, 0)), 6
+                        )
+                    _buf = self.entity._causal_observations
+                    _buf.append({"tick": self.entity.tick, "source": "none", "delta": _delta_t})
+                    _excess = len(_buf) - 200
+                    self.entity._causal_observations = _buf[max(0, _excess):]
+                except Exception:
+                    pass
                 # ---- 内心日记 ----
                 try:
                     write_diary_entry(state=self.entity, decision=None, prev_state=None)
@@ -331,10 +350,12 @@ class TickEngine:
 
         # ---- Step 0: 检查用户回复 ----
         # 如果用户通过 reach_client 发来了回复，把它作为 raw_input 传入管线
+        _input_source = "none"
         try:
             response_data = read_response()
             if response_data:
                 user_input = response_data.get("text", "")
+                _input_source = "external"
                 logger.info(f"[TickEngine] 用户回复已读取: {user_input[:50]}")
                 # 用户回应了 → 重置敲门未回应计数，记录互动时间
                 if self.entity.consecutive_reaches_without_response > 0:
@@ -355,6 +376,7 @@ class TickEngine:
                 sibling_msg = self.sibling_channel.poll()
                 if sibling_msg:
                     user_input = sibling_msg
+                    _input_source = "sibling"
                     logger.info(f"[TickEngine] 姐妹说: {sibling_msg[:50]}")
             except Exception as e:
                 logger.debug(f"[TickEngine] sibling poll failed: {e}")
@@ -390,8 +412,49 @@ class TickEngine:
             except Exception as _cov_err:
                 logger.debug(f"[CovarianceTracker] update skipped: {_cov_err}")
 
-            # ---- 世界模型归纳（每 10 tick，快照 >= 5 时触发）----
-            if self._tick_count % 10 == 0:
+            # ---- 阅读摄入（输入环节，独立于行动系统）----
+            # 阅读是输入，不是输出。她读一段文字，提取候选词汇。
+            # 不产出 voice 文件——voice 只存她自己说的话。
+            try:
+                from .reading_source import pick_and_read
+                from ..language_system.reading_acquisition import (
+                    harvest_from_reading,
+                    inject_reading_candidates,
+                )
+                _data_dir = Path(__file__).parent.parent.parent / "data"
+                _reading = pick_and_read(_data_dir, entity_state=self.entity)
+                if _reading:
+                    _candidates = harvest_from_reading(
+                        text=_reading["text"],
+                        entity_state=self.entity,
+                        max_candidates=3,
+                        min_similarity=0.35,
+                    )
+                    if _candidates:
+                        _injected = inject_reading_candidates(
+                            self.entity, _candidates,
+                        )
+                        if _injected > 0:
+                            logger.info(
+                                f"[TickEngine] Reading intake: "
+                                f"{_injected} words from "
+                                f"{_reading['source']}/{_reading['file']}"
+                            )
+                            try:
+                                from .reading_taste import (
+                                    compute_fingerprint,
+                                    record_reading,
+                                )
+                                _fp = compute_fingerprint(_reading["text"])
+                                _words = [c["word"] for c in _candidates]
+                                record_reading(self.entity, _fp, _words)
+                            except Exception:
+                                pass
+            except Exception as _read_err:
+                logger.debug(f"[TickEngine] Reading intake skipped: {_read_err}")
+
+            # ---- 世界模型归纳（每 10 entity tick，快照 >= 5 时触发）----
+            if self.entity.tick % 10 == 0:
                 try:
                     _snaps = getattr(self.entity, "snapshots", [])
                     if len(_snaps) >= 5:
@@ -480,8 +543,26 @@ class TickEngine:
                 except Exception:
                     pass
 
-            # ---- 风化系统：常规漂移（每 300 tick）----
-            if self._tick_count % 300 == 0 and self.covariance_tracker.sample_count >= 50:
+            # ---- 因果学习：每 100 entity tick 从观测缓冲提取关联 ----
+            if self.entity.tick % 100 == 0 and len(self.entity._causal_observations) >= 10:
+                try:
+                    from ..causal_learner import extract_causal_associations
+                    _effects = extract_causal_associations(self.entity._causal_observations)
+                    self.entity._causal_associations = _effects
+                    if _effects:
+                        logger.info(f"[CausalLearner] Associations updated: {list(_effects.keys())}")
+                except Exception as _cl_err:
+                    logger.debug(f"[CausalLearner] skipped: {_cl_err}")
+
+            # ---- 风化系统：常规漂移（每 300 entity tick）----
+            if self.entity.tick % 300 == 0 and self.covariance_tracker.sample_count >= 50:
+                # 风化前：entity 运行时值 → param_store（让风化从真实值漂移）
+                try:
+                    from ..weathering.param_sync import reverse_sync_conversion_params
+                    reverse_sync_conversion_params(self.entity)
+                except Exception:
+                    pass
+
                 try:
                     from ..weathering.signal_bridge import correlations_to_drift_signals
                     from ..weathering.drift import apply_drift_cycle
@@ -502,15 +583,22 @@ class TickEngine:
                             )
                             if _drifted:
                                 write_drifted_params(_drifted)
-                                logger.debug(
+                                logger.info(
                                     f"[weathering] Normal drift applied: "
-                                    f"{len(_drifted)} params"
+                                    f"{len(_drifted)} params: {_drifted}"
                                 )
                 except Exception as _drift_err:
-                    logger.debug(f"[weathering] Drift cycle skipped: {_drift_err}")
+                    logger.info(f"[weathering] Drift cycle skipped: {_drift_err}")
 
-            # ---- 风化系统：张力快照（每 600 tick）----
-            if self._tick_count % 600 == 0:
+                # 风化后：param_store 漂移值 → entity（让 pipeline 用新值）
+                try:
+                    from ..weathering.param_sync import sync_conversion_params
+                    sync_conversion_params(self.entity)
+                except Exception:
+                    pass
+
+            # ---- 风化系统：张力快照（每 600 entity tick）----
+            if self.entity.tick % 600 == 0:
                 try:
                     from ..observability import TensionSnapshot, emit_event
                     from ..weathering.shattering import load_suppressed_tension
@@ -580,7 +668,7 @@ class TickEngine:
                 try:
                     # ---- 判断本次 action 是否需要工具执行 ----
                     _real_action = emergent_behavior_dict.get("action_type", "comfort")
-                    _TOOL_ACTIONS = {"explore", "repair", "seek", "write"}
+                    _TOOL_ACTIONS = {"repair", "write"}
                     _needs_tools = _real_action in _TOOL_ACTIONS
 
                     training_override = getattr(self.entity, "_training_override", None)
@@ -611,153 +699,60 @@ class TickEngine:
                                 f"tool action: {_real_action}"
                             )
                             self.entity._training_override = None
-                        # 使用注入的 LLM provider chain（DeepSeek API）
+                        # 使用注入的 LLM provider chain（仅 repair/write 工具行动）
                         llm_callable = self._llm_callable
                         if llm_callable is None:
                             from ..llm import create_llm_callable
                             llm_callable = create_llm_callable()
 
-                        # ---- Step A: 保存 pre-action 状态 ----
                         pre_action_state = self.entity.to_state_snapshot()
 
-                        # ---- Step A.3: 轻量阅读（explore/seek 优先，不用 LLM）----
-                        _reading_done = False
-                        if _real_action in {"explore", "seek"}:
-                            try:
-                                from .reading_source import pick_and_read
-                                _data_dir = Path(__file__).parent.parent.parent / "data"
-                                _reading = pick_and_read(_data_dir, entity_state=self.entity)
-                                if _reading:
-                                    response = _reading["text"]
-                                    action = XIAction(
-                                        action_type=_real_action,
-                                        reason=f"reading: {_reading['source']}/{_reading['file']}",
-                                        intensity=strength,
-                                        tick=self.entity.tick,
-                                        context={
-                                            "reading_source": _reading["source"],
-                                            "reading_file": _reading["file"],
-                                        },
-                                    )
-                                    self.entity.last_action_timestamp = time.time()
-                                    action_triggered = True
-                                    action_result = f"[读] {_reading['source']}/{_reading['file']}: {response[:60]}"
-                                    logger.info(f"[TickEngine] {action_result}")
-                                    _reading_done = True
-                            except Exception as _read_err:
-                                logger.debug(f"[TickEngine] Reading source failed: {_read_err}")
+                        action, response = execute_xia_choice(
+                            entity=self.entity,
+                            llm_callable=llm_callable,
+                            suggested_tool=emergent_behavior_dict.get("suggested_tool", ""),
+                            action_type=emergent_behavior_dict.get("action_type", ""),
+                            emergent_behavior=None,
+                        )
+                        self.entity.last_action_timestamp = time.time()
+                        action_triggered = True
+                        action_result = response[:100] if response else "(无内容)"
+                        logger.info(f"[TickEngine] Tool action: {action_result}")
 
-                        if not _reading_done:
-                            # ---- Step A.5: 联想回忆（比探索便宜）----
-                            _recall_result = None
-                            try:
-                                from ..language_system.associative_recall import attempt_recall
-                                _recall_result = attempt_recall(
-                                    entity=self.entity,
-                                    action_type=_real_action,
-                                    drive_state=pre_action_state,
-                                )
-                            except Exception as _recall_err:
-                                logger.debug(f"[TickEngine] Recall skipped: {_recall_err}")
-
-                            if _recall_result:
-                                # 回忆赢了——省掉 LLM 调用
-                                response = _recall_result["expression"]
-                                action = XIAction(
-                                    action_type=_real_action,
-                                    reason=f"recall: ep={_recall_result['episode_id']}",
-                                    intensity=strength,
-                                    tick=self.entity.tick,
-                                    context={
-                                        "recall_episode": _recall_result["episode_id"],
-                                        "recall_topic": _recall_result["topic"],
-                                    },
-                                )
-                                # 更新回忆计数（衰减用）
-                                self.entity._recall_counts = _recall_result["recall_counts"]
-                                self.entity.last_action_timestamp = time.time()
-                                action_triggered = True
-                                action_result = response[:100]
-                                logger.info(
-                                    f"[TickEngine] Recall instead of {_real_action}: "
-                                    f"'{action_result}'"
-                                )
-                            else:
-                                # 回忆不划算——走正常探索路径
-                                action, response = execute_xia_choice(
-                                    entity=self.entity,
-                                    llm_callable=llm_callable,
-                                    suggested_tool=emergent_behavior_dict.get("suggested_tool", ""),
-                                    action_type=emergent_behavior_dict.get("action_type", ""),
-                                    emergent_behavior=None,
-                                )
-                                self.entity.last_action_timestamp = time.time()
-                                action_triggered = True
-                                action_result = response[:100] if response else "(无内容)"
-                                logger.info(f"[TickEngine] XIA acted: {action_result}")
-
-                        # ---- Step B: 记忆回写（自主 action → episode + 行为规则）----
-                        # 回忆产出的指称表达不写入 output_text，避免自引用循环
-                        _is_recall = hasattr(action, "reason") and str(getattr(action, "reason", "")).startswith("recall:")
-                        _record_text = response
-                        if _is_recall:
-                            _record_text = ""
                         _record_autonomous_action(
                             entity=self.entity,
                             action=action,
-                            response_text=_record_text,
+                            response_text=response,
                             pre_action_state=pre_action_state,
                         )
-
-                        # ---- Step C: 阅读习得（explore/seek → 候选词提取 → 升温管线）----
-                        _harvest_action = emergent_behavior_dict.get("action_type", "")
-                        if _harvest_action in {"explore", "seek"} and response:
-                            try:
-                                from ..language_system.reading_acquisition import (
-                                    harvest_from_reading,
-                                    inject_reading_candidates,
-                                )
-                                _candidates = harvest_from_reading(
-                                    text=response,
-                                    entity_state=self.entity,
-                                    max_candidates=3,
-                                    min_similarity=0.35,
-                                )
-                                if _candidates:
-                                    _injected = inject_reading_candidates(
-                                        self.entity, _candidates,
-                                    )
-                                    if _injected > 0:
-                                        logger.info(
-                                            f"[TickEngine] Reading acquisition: "
-                                            f"{_injected} candidates from {_harvest_action}"
-                                        )
-                                    # 记录阅读品味（哪种风格产出了候选词）
-                                    if _reading_done and _injected > 0:
-                                        try:
-                                            from .reading_taste import (
-                                                compute_fingerprint,
-                                                record_reading,
-                                            )
-                                            _fp = compute_fingerprint(response)
-                                            _words = [c["word"] for c in _candidates]
-                                            record_reading(self.entity, _fp, _words)
-                                            logger.info(
-                                                f"[TickEngine] Taste recorded: "
-                                                f"fp={_fp}, words={_words}"
-                                            )
-                                        except Exception as _taste_err:
-                                            logger.warning(
-                                                f"[TickEngine] Taste recording failed: {_taste_err}"
-                                            )
-                            except Exception as _ra_err:
-                                logger.debug(
-                                    f"[TickEngine] Reading acquisition skipped: {_ra_err}"
-                                )
 
                 except Exception as e:
                     logger.error(f"[TickEngine] Action execution failed: {e}")
                     action_result = f"error: {e}"
+
+            # ---- 因果观测：记录 (输入来源, 状态delta) 配对 ----
+            try:
+                _CAUSAL_DIMS = (
+                    "energy", "loneliness", "fatigue", "boredom", "stress",
+                    "info_gap", "unresolved", "approach_drive", "avoid_drive",
+                    "curiosity", "joy", "fear", "sadness", "anxiety",
+                )
+                _post_snap = self.entity.to_state_snapshot()
+                _delta = {}
+                for _cd in _CAUSAL_DIMS:
+                    _d = float(_post_snap.get(_cd, 0)) - float(_prev_state_snapshot.get(_cd, 0))
+                    _delta[_cd] = round(_d, 6)
+                _obs_buf = self.entity._causal_observations
+                _obs_buf.append({
+                    "tick": self.entity.tick,
+                    "source": _input_source,
+                    "delta": _delta,
+                })
+                # 滚动窗口：保留最近 200 条
+                _excess = len(_obs_buf) - 200
+                self.entity._causal_observations = _obs_buf[max(0, _excess):]
+            except Exception:
+                pass
 
             # ---- 内心日记：tick 结束时写入她的内心独白 ----
             try:
@@ -896,6 +891,9 @@ class TickEngine:
             "dimension_values": self._get_dimension_values(),
             # 风化张力
             "suppressed_tension": self._last_tension_total,
+            # 因果学习器状态
+            "causal_observations_count": len(getattr(self.entity, "_causal_observations", [])),
+            "causal_associations": dict(getattr(self.entity, "_causal_associations", {})),
         }
 
     def _get_dimension_values(self) -> dict:

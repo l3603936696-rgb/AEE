@@ -165,13 +165,16 @@ def _make_fallback_candidates(state: Dict[str, float]) -> List[str]:
     except Exception:
         pass
 
-    # 词典加载失败时的硬兜底
+    # 词典加载失败时的硬兜底：按 avoid 连续分桶
+    import bisect as _bisect
     avoid = float(state.get("avoid_drive", state.get("avoid", 0.3)))
-    if avoid > 0.7:
-        return ["嗯", "……", "不知道", "算了"]
-    elif avoid > 0.5:
-        return ["嗯", "哦", "不知道", "也许"]
-    return ["嗯", "哦", "好"]
+    _AVOID_THRESHOLDS = [0.5, 0.7]
+    _FALLBACK_TIERS = [
+        ["嗯", "哦", "好"],
+        ["嗯", "哦", "不知道", "也许"],
+        ["嗯", "……", "不知道", "算了"],
+    ]
+    return _FALLBACK_TIERS[_bisect.bisect_right(_AVOID_THRESHOLDS, avoid)]
 
 
 # ============================================================================
@@ -805,11 +808,9 @@ def run_pipeline(
             for _dim in _dims:
                 if _dim not in _perturb:
                     continue
+                _PERTURB_SCALE = {"somatic_tone": 2.0}
                 _step = _random.gauss(0, _sigma)
-                if _dim == "somatic_tone":
-                    entity.somatic_tone = max(-1.0, min(1.0, entity.somatic_tone + _step * 2))
-                else:
-                    entity.adjust(_dim, _step)
+                entity.adjust(_dim, _step * _PERTURB_SCALE.get(_dim, 1.0))
             # 子驱动力稀疏扰动
             for _sub in ["approach_social", "approach_explore", "approach_urgency"]:
                 if _sub not in _perturb:
@@ -879,13 +880,7 @@ def run_pipeline(
                     _current = getattr(entity, _dim, _mean)
                     _stuck_ratio = min(_deviation / 0.5, 1.0)  # 偏离越大推力越强
                     _force = (_neutral - _current) * _stuck_ratio * 0.10 * (1.0 + _lock_factor)
-                    if _dim == "somatic_tone":
-                        entity.somatic_tone = max(-1.0, min(1.0, entity.somatic_tone + _force))
-                    elif _dim in ("approach_social", "approach_explore", "approach_urgency",
-                                  "approach_drive", "avoid_drive"):
-                        setattr(entity, _dim, max(0.0, min(1.0, _current + _force)))
-                    else:
-                        entity.adjust(_dim, _force)
+                    entity.adjust(_dim, _force)
 
                 if entity.tick % 10 == 0 and _lock_factor > 0:
                     _stuck_dims = []
@@ -911,48 +906,42 @@ def run_pipeline(
     try:
         _violations = 0
 
+        # 连续投影：max(0, excess) 在不越界时自然为 0，无需 if 门控
+
         # 1. energy + fatigue ≤ 1.3（不可能精神饱满又极度疲惫）
         _e, _f = entity.energy, entity.fatigue
-        if _e + _f > 1.3:
-            _excess = (_e + _f - 1.3) / 2
-            entity.energy = max(0.0, _e - _excess)
-            entity.fatigue = max(0.0, _f - _excess)
-            _violations += 1
+        _excess_1 = max(0.0, _e + _f - 1.3) / 2
+        entity.energy = max(0.0, _e - _excess_1)
+        entity.fatigue = max(0.0, _f - _excess_1)
 
-        # 2. somatic_tone > 0.3 → pain 不能太高
-        if entity.somatic_tone > 0.3:
-            _pain_limit = 0.4 + (entity.somatic_tone - 0.3) * 0.3
-            if entity.pain > _pain_limit:
-                entity.pain = _pain_limit
-                _violations += 1
+        # 2. somatic_tone 正 → pain 上限提升；连续投影
+        _pain_limit = 0.4 + max(0.0, entity.somatic_tone - 0.3) * 0.3
+        _pain_excess = max(0.0, entity.pain - _pain_limit)
+        entity.pain = entity.pain - _pain_excess
 
         # 3. danger × approach_social ≤ 0.5（恐惧压抑社交冲动）
         _dp = entity.danger_level * entity.approach_social
-        if _dp > 0.5:
-            # 各退一半
-            _excess = (_dp - 0.5) / 2
-            entity.danger_level = max(0.0, entity.danger_level - _excess)
-            entity.approach_social = max(0.0, entity.approach_social - _excess)
-            _violations += 1
+        _excess_3 = max(0.0, _dp - 0.5) / 2
+        entity.danger_level = max(0.0, entity.danger_level - _excess_3)
+        entity.approach_social = max(0.0, entity.approach_social - _excess_3)
 
         # 4. fatigue × approach_urgency ≤ 0.4（累瘫不可能急迫）
         _fu = entity.fatigue * entity.approach_urgency
-        if _fu > 0.4:
-            _excess = (_fu - 0.4) / 2
-            entity.fatigue = max(0.0, entity.fatigue - _excess)
-            entity.approach_urgency = max(0.0, entity.approach_urgency - _excess)
-            _violations += 1
+        _excess_4 = max(0.0, _fu - 0.4) / 2
+        entity.fatigue = max(0.0, entity.fatigue - _excess_4)
+        entity.approach_urgency = max(0.0, entity.approach_urgency - _excess_4)
 
-        # 5. approach_drive + avoid_drive 不能同时 > 0.6
+        # 5. approach + avoid 同时高 → 各自回拉
         _a, _av = entity.approach_drive, entity.avoid_drive
-        if _a > 0.6 and _av > 0.6:
-            _avg = (_a + _av) / 2
-            entity.approach_drive = max(0.0, _a - (_a - 0.6) * 0.5)
-            entity.avoid_drive = max(0.0, _av - (_av - 0.6) * 0.5)
-            _violations += 1
+        _a_over = max(0.0, _a - 0.6)
+        _av_over = max(0.0, _av - 0.6)
+        _joint = min(_a_over, _av_over)  # 两者都超 0.6 时 > 0
+        entity.approach_drive = max(0.0, _a - _joint * 0.5)
+        entity.avoid_drive = max(0.0, _av - _joint * 0.5)
 
-        if _violations > 0 and entity.tick % 20 == 0:
-            _trace("mc_constraints", True, {"violations": _violations})
+        # 连续违规量（用于日志）
+        _violations = _excess_1 + _pain_excess + _excess_3 + _excess_4 + _joint
+        _trace("mc_constraints", True, {"violations_total": round(_violations, 4)})
     except Exception:
         pass
 
@@ -1319,16 +1308,17 @@ def run_pipeline(
                     if exp:
                         rule_expect_changes.add(exp)
 
-            # 决策方向与规律方向对比
-            if emergent_action in {"seek", "explore"} and rule_action_types:
-                # 趋近/探索决策是否被世界模型支持
-                if emergent_action not in rule_action_types and "avoid" in rule_action_types:
-                    prediction_error = 0.5  # 决策与规律冲突
-                elif emergent_action in rule_action_types:
-                    prediction_error = -0.3  # 一致，误差负（规律支持决策）
-            elif emergent_action in {"avoid", "rest"}:
-                if "seek" in rule_action_types and "avoid" not in rule_action_types:
-                    prediction_error = 0.4
+            # 决策方向与规律方向：连续对齐度计算
+            _ACTION_DIR = {
+                "seek": 1.0, "explore": 0.8, "comfort": 0.3,
+                "idle": 0.0, "rest": -0.5, "avoid": -1.0, "repair": 0.0,
+            }
+            _decision_dir = _ACTION_DIR.get(emergent_action, 0.0)
+            _rule_dir_sum = sum(_ACTION_DIR.get(a, 0.0) for a in rule_action_types)
+            _rule_dir = _rule_dir_sum / max(1, len(rule_action_types))
+            # 方向相同 → 负误差（支持），方向相反 → 正误差（冲突）
+            _has_rules = min(1.0, float(len(rule_action_types)))
+            prediction_error = -(_decision_dir * _rule_dir) * 0.5 * _has_rules
 
         entity._last_prediction_error = max(-1.0, min(1.0, prediction_error))
         _trace("prediction_error", True, {
@@ -1344,7 +1334,7 @@ def run_pipeline(
     # 结果写入 entity._last_prediction，供 Step 12 快照记录计算 prediction_error_map
     try:
         from ..world_model_update.induct import predict_action_effects
-        action_for_pred = emergent_action if emergent_action else decision.get("action_type", "")
+        action_for_pred = emergent_action or decision.get("action_type", "")
         entity_wm = getattr(entity, "wm_rules", [])
         if action_for_pred and entity_wm:
             entity._last_prediction = predict_action_effects(
@@ -1603,26 +1593,26 @@ def run_pipeline(
     if selected_candidate is not None and all_action_results:
         success = any(r.startswith("[OK]") or "[search]" in r for r in all_action_results)
         failure = any("失败" in r or "Error" in r or "error" in r for r in all_action_results)
-        if failure:
-            success = False
+        # failure 信号连续抑制 success（failure=True → success_signal=0）
+        _fail_signal = float(failure)
+        _success_signal = float(success) * (1.0 - _fail_signal)
 
-        # v2: 计算 short_term_reward 和 satisfaction
-        short_reward = 1.0 if success else -0.5
-        # satisfaction：搜索结果数量越多越满足，失败越低
+        # v2: 连续 short_term_reward 和 satisfaction
+        short_reward = _success_signal * 1.5 - 0.5  # success→1.0, fail→-0.5
+        # satisfaction：结果数量的连续饱和 + 失败惩罚
         result_count = len(all_action_results)
-        satisfaction = 0.5
-        if failure:
-            satisfaction = 0.2
-        elif result_count >= 3:
-            satisfaction = 0.8
-        elif result_count >= 1:
-            satisfaction = 0.6
+        satisfaction = (
+            0.5
+            + min(result_count / 5.0, 0.3)       # 结果越多越满足（饱和在 0.8）
+            - _fail_signal * 0.3                   # 失败降低满足
+        )
+        satisfaction = max(0.0, min(1.0, satisfaction))
 
         result_for_feedback = {
-            "success": success,
+            "success": _success_signal > 0.5,
             "detail": " | ".join(all_action_results[:3]),
-            "prediction_error": 0.5 if failure else 0.2,
-            "error_type": "execution" if failure else "none",
+            "prediction_error": 0.2 + _fail_signal * 0.3,
+            "error_type": {True: "execution", False: "none"}[failure],
             "short_term_reward": short_reward,
             "satisfaction": satisfaction,
             "content": " | ".join(all_action_results[:3]),
@@ -2447,16 +2437,15 @@ def run_pipeline(
             mainline_result = None
 
         # V3 规范：省略意图编码层，从 EntityCore 状态直接生成语言
-        # length 规则：
-        #   - "tiny"：高疲劳 或 低能量（说话费力）
-        #   - "short"：默认（正常互动）
-        #   - "medium"：高好奇心 或 高无聊（想说更多）
-        if entity.fatigue > 0.6 or entity.energy < 0.3:
-            effective_length = "tiny"
-        elif entity.boredom > 0.7 or entity.info_gap > 0.6 or entity.unresolved > 0.6:
-            effective_length = "medium"
-        else:
-            effective_length = "short"
+        # 连续 length 信号：疲劳/低能量缩短，好奇/无聊/未解决拉长
+        _shrink = entity.fatigue * 0.8 + max(0.0, 1.0 - entity.energy) * 0.5
+        _expand = max(entity.boredom, entity.info_gap, entity.unresolved) * 0.8
+        # net: 正 → 扩展，负 → 收缩
+        _length_signal = _expand - _shrink
+        _LENGTH_LABELS = ("tiny", "short", "medium")
+        _LENGTH_THRESHOLDS = [-0.2, 0.2]
+        import bisect as _bisect_len
+        effective_length = _LENGTH_LABELS[_bisect_len.bisect_right(_LENGTH_THRESHOLDS, _length_signal)]
         _intent_repr_fallback = {
             "tone": "neutral",
             "goal": "share",
@@ -2804,13 +2793,14 @@ def run_pipeline(
         # 检测用户互动
         _user_interacted = bool(raw_input and str(raw_input).strip())
 
+        _QUENCH_ACTIONS = {"sleep": "sleep", "rest": "rest", "avoid": "avoid", "vent": "vent", "explore": "explore"}
         _q_result = apply_all_quenching(
             entity=entity,
-            emergent_action=emergent_action if emergent_action else "idle",
-            emergent_priority=emergent_priority if emergent_priority else 0.0,
-            emergent_tension=emergent_tension if emergent_tension else 0.0,
+            emergent_action=emergent_action or "idle",
+            emergent_priority=emergent_priority or 0.0,
+            emergent_tension=emergent_tension or 0.0,
             user_interacted=_user_interacted,
-            behavior_action=emergent_action if emergent_action in ("sleep", "rest", "avoid", "vent", "explore") else "",
+            behavior_action=_QUENCH_ACTIONS.get(emergent_action, ""),
             dt=1.0,
             journal=_qj,
         )

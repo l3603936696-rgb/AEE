@@ -28,10 +28,11 @@ DIMENSION_DRIFT_MAP: Dict[str, Dict[str, float]] = {
         "personality.rejection_sensitivity": +1.0,
         "personality.introverted_bias": +0.5,
         "personality.social_risk_weight": +1.0,
+        "conversion.approach_synthesis.social": +0.5,
+        "conversion.failure_metabolite.approach_suppress": +0.3,
     },
     "energy": {
         "personality.recovery_rate": -0.5,
-        "llm.temperature": -0.3,
     },
     "fatigue": {
         "decision.survival_override_threshold": -0.5,
@@ -48,14 +49,18 @@ DIMENSION_DRIFT_MAP: Dict[str, Dict[str, float]] = {
     "avoid_drive": {
         "personality.introverted_bias": +0.5,
         "personality.social_risk_weight": +0.5,
+        "conversion.emotion_drive_mod.avoid.fear": +0.3,
+        "conversion.failure_metabolite.avoid_increase": +0.3,
     },
     "approach_drive": {
         "personality.extroverted_bias": +0.3,
         "personality.novelty_reward": +0.3,
+        "conversion.emotion_drive_mod.approach.joy": +0.3,
     },
     "boredom_despair": {
         "personality.novelty_reward": -0.3,
         "personality.recovery_rate": -0.3,
+        "conversion.approach_synthesis.explore": -0.5,
     },
     "curiosity": {
         "web_search.info_hunger_threshold": -0.3,

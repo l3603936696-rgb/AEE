@@ -58,8 +58,7 @@ def list_all() -> list:
 
 # ---- 初始注册 ----
 _TIER1 = [
-    DriftableParam("llm.temperature",                    1, 0.7,  0.1, 1.5),
-    DriftableParam("decision.fallback_priority",         1, 0.0, -0.5, 1.0),
+    # 已清理：llm.temperature / decision.fallback_priority 是基础设施配置，不是人格转换系数
 ]
 
 _TIER2 = [
@@ -70,6 +69,18 @@ _TIER2 = [
     DriftableParam("web_search.info_hunger_threshold",   2, 0.6,  0.2, 0.95),
 ]
 
+_TIER2_CONVERSION = [
+    # 趋近驱动合成
+    DriftableParam("conversion.approach_synthesis.social",   2, 0.40, 0.10, 0.70),
+    DriftableParam("conversion.approach_synthesis.explore",  2, 0.35, 0.10, 0.70),
+    DriftableParam("conversion.approach_synthesis.urgency",  2, 0.25, 0.05, 0.60),
+    # 消力反馈
+    DriftableParam("conversion.quench_feedback.quench_rate", 2, 0.25, 0.05, 0.60),
+    # 失败代谢
+    DriftableParam("conversion.failure_metabolite.approach_suppress", 2, 0.15, 0.02, 0.40),
+    DriftableParam("conversion.failure_metabolite.avoid_increase",   2, 0.12, 0.02, 0.35),
+]
+
 _TIER3 = [
     DriftableParam("personality.introverted_bias",       3, 0.2,  0.0, 0.9, asymmetry=2.0),
     DriftableParam("personality.extroverted_bias",       3, 0.1,  0.0, 0.9, asymmetry=2.0),
@@ -77,5 +88,15 @@ _TIER3 = [
     DriftableParam("personality.recovery_rate",          3, 1.0,  0.1, 2.0, asymmetry=2.0),
 ]
 
-for _p in _TIER1 + _TIER2 + _TIER3:
+_TIER3_CONVERSION = [
+    # 情绪→趋近/回避调制（深层人格）
+    DriftableParam("conversion.emotion_drive_mod.approach.joy",   3, 0.15, 0.0, 0.50, asymmetry=1.8),
+    DriftableParam("conversion.emotion_drive_mod.approach.anger", 3, 0.25, 0.0, 0.60, asymmetry=1.5),
+    DriftableParam("conversion.emotion_drive_mod.avoid.fear",     3, 0.30, 0.05, 0.70, asymmetry=2.0),
+    DriftableParam("conversion.emotion_drive_mod.avoid.disgust",  3, 0.35, 0.05, 0.70, asymmetry=2.0),
+    # 冲突→未解决转化率
+    DriftableParam("conversion.conflict_to_unresolved.conflict_rate", 3, 0.04, 0.005, 0.15, asymmetry=1.5),
+]
+
+for _p in _TIER1 + _TIER2 + _TIER2_CONVERSION + _TIER3 + _TIER3_CONVERSION:
     register(_p)

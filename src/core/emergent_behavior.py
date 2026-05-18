@@ -55,6 +55,13 @@ _FRAG_TONE_HIGH: Dict[str, str] = {
     "idle":     "内心有些拉扯但还算平静",
 }
 
+# 连续索引选择：frag * _FRAG_INV_THRESHOLD 映射到 {0, 1}
+_FRAG_TONES = (_FRAG_TONE_NORMAL, _FRAG_TONE_HIGH)
+_FRAG_INV_THRESHOLD = 2.5  # 1 / 0.4，原阈值的倒数
+
+# target_locked 无效值映射
+_INVALID_LOCKS: Dict = {"none": "", "": "", None: ""}
+
 
 def _compute_v6_behavior(entity_core, drive_vector: Optional[Dict[str, float]] = None) -> "V6Result":
     """
@@ -104,10 +111,8 @@ def _compute_v6_behavior(entity_core, drive_vector: Optional[Dict[str, float]] =
     frag_key = f"{dominant_dim}_fragmentation"
     frag = bv.get(frag_key, 0.0)
 
-    if frag > 0.4:
-        tone = _FRAG_TONE_HIGH.get(action_type, "行为有抵触感")
-    else:
-        tone = _FRAG_TONE_NORMAL.get(action_type, "")
+    _tone_idx = min(1, int(frag * _FRAG_INV_THRESHOLD))
+    tone = _FRAG_TONES[_tone_idx].get(action_type, "")
 
     return V6Result(
         action_type=action_type,
@@ -167,21 +172,20 @@ def emerge_behavior(entity_core: Any, drive_vector: Optional[Dict[str, float]] =
         pass
 
     if v6_result is not None:
-        suggested_tool = ""
-        if v6_result.action_type == "repair":
-            from .emergent_behavior_v5 import _get_wm_repair_confidence
-            wm_conf = _get_wm_repair_confidence(entity_core)
-            ask_weight = max(0.0, 1.0 - wm_conf * 2.0)
-            shell_weight = max(0.0, (wm_conf - 0.3) * 2.5)
-            if ask_weight > shell_weight:
-                suggested_tool = "ask_hermes"
-            elif shell_weight > 0.1:
-                suggested_tool = "shell_run"
+        # 连续工具权重：repair 信号低时 "" 自然胜出
+        _repair_signal = v6_result.behavior_vector.get("unresolved_intensity", 0.0)
+        from .emergent_behavior_v5 import _get_wm_repair_confidence
+        wm_conf = _get_wm_repair_confidence(entity_core)
+        _tool_weights = {
+            "ask_hermes": max(0.0, 1.0 - wm_conf * 2.0) * _repair_signal,
+            "shell_run":  max(0.0, (wm_conf - 0.3) * 2.5) * _repair_signal,
+            "":           1e-6,
+        }
+        suggested_tool = max(_tool_weights, key=_tool_weights.get)
 
         target_locked = getattr(entity_core, "target_locked", None)
-        target = getattr(v6_result, "target", "") or (
-            target_locked if target_locked and target_locked != "none" else ""
-        )
+        _valid_lock = _INVALID_LOCKS.get(target_locked, target_locked)
+        target = getattr(v6_result, "target", "") or _valid_lock or ""
 
         emergent = EmergentBehavior(
             action_type=v6_result.action_type,
@@ -266,15 +270,9 @@ def compute_tension_raw(a: float, b: float) -> tuple:
 # ============================================================================
 
 def _interpolate(x: float, anchors_x, anchors_y) -> str:
-    if x <= anchors_x[0]:
-        return anchors_y[0]
-    if x >= anchors_x[-1]:
-        return anchors_y[-1]
-    for i in range(len(anchors_x) - 1):
-        if anchors_x[i] <= x <= anchors_x[i + 1]:
-            t = (x - anchors_x[i]) / (anchors_x[i + 1] - anchors_x[i])
-            return anchors_y[i] if t < 0.5 else anchors_y[i + 1]
-    return anchors_y[-1]
+    import bisect
+    idx = bisect.bisect_right(anchors_x, x)
+    return anchors_y[max(0, min(len(anchors_y) - 1, idx - 1))]
 
 
 def _interpolate_pace(x: float) -> str:
@@ -299,12 +297,15 @@ _ACTION_INITIATIVE_CAPS: Dict[str, str] = {
 }
 
 
+_LEVEL_IDX: Dict[str, int] = {"被动回应": 0, "正常回应": 1, "偏主动": 2, "主动延伸话题": 3}
+_LEVELS = ["被动回应", "正常回应", "偏主动", "主动延伸话题"]
+
+
 def _apply_action_consistency(initiative: str, action_type: str) -> str:
-    levels = ["被动回应", "正常回应", "偏主动", "主动延伸话题"]
     cap = _ACTION_INITIATIVE_CAPS.get(action_type, "主动延伸话题")
-    cap_idx = levels.index(cap) if cap in levels else len(levels) - 1
-    init_idx = levels.index(initiative) if initiative in levels else cap_idx
-    return levels[min(init_idx, cap_idx)]
+    cap_idx = _LEVEL_IDX.get(cap, len(_LEVELS) - 1)
+    init_idx = _LEVEL_IDX.get(initiative, cap_idx)
+    return _LEVELS[min(init_idx, cap_idx)]
 
 
 def derive_rendering_params(
@@ -323,10 +324,8 @@ def derive_rendering_params(
     init_x = (
         float(getattr(entity_state, "loneliness_drive", 0.0)) * 0.6
         + float(getattr(entity_state, "curiosity", 0.5)) * 0.4
+        + approach * max(0.0, 1.0 - fatigue) * 0.3
     )
-
-    if approach >= 0.85 and fatigue <= 0.15:
-        init_x = max(init_x, 0.65)
 
     initiative = _interpolate_initiative(init_x)
     initiative = _apply_action_consistency(initiative, action)
