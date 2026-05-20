@@ -186,14 +186,18 @@ def _compute_curiosity(info_gap: float, curiosity_param: Optional[float] = None)
     好奇心驱动 (A类 - 持续型驱动)
 
     输入：info_gap（信息缺口，0-1）
-    公式：curiosity = sigmoid_curve(info_gap, curiosity_param)
+    公式：curiosity = info_gap ^ (1/k)
 
-    说明：使用标准 S 型生长曲线，info_gap=0 时保留约 0.27 的基础底噪。
+    幂函数特性：
+        - info_gap=0 时 curiosity=0（边际递减真正归零）
+        - info_gap=1 时 curiosity=1
+        - k=1 时线性，k>1 时低缺口区更敏感（微小缺口也产生好奇）
+        - k<1 时低缺口区更迟钝（需要较大缺口才有好奇）
     """
     try:
         info_gap = max(0.0, min(1.0, float(info_gap)))
         k = float(curiosity_param) if curiosity_param is not None else 1.0
-        return sigmoid_curve(info_gap, k)
+        return math.pow(info_gap, 1.0 / max(0.1, k))
     except (TypeError, ValueError):
         return 0.0
 
@@ -273,20 +277,21 @@ def _compute_loneliness_drive(
         return 0.0
 
 
-def _compute_fatigue_avoid(energy: float, fatigue_shape: dict) -> float:
+def _compute_fatigue_avoid(energy: float, fatigue_shape: dict, fatigue: float = 0.0) -> float:
     """
     疲惫回避驱动 (B类 - 沉寂型驱动)
 
-    输入：energy（0-1）
-    公式：
-        x = 1.0 - energy
-        fatigue_avoid = interpolate_lookup(x, fatigue_shape.x_anchors, fatigue_shape.y_anchors)
+    双信号源：
+        - 算力不足信号：1.0 - energy（算力被占满 → 想回避）
+        - 累积疲劳信号：fatigue（持续运作累积的疲劳）
+    取较强者作为形态表输入。
 
     形态表类型：有界型表 (fatigue_shape)
     """
     try:
         energy = max(0.0, min(1.0, float(energy)))
-        x = 1.0 - energy
+        fatigue = max(0.0, min(1.0, float(fatigue)))
+        x = max(1.0 - energy, fatigue)
 
         shape = ShapeTable.from_dict(fatigue_shape)
         if not shape.is_valid():
@@ -417,7 +422,8 @@ def compute_drive_vector(state_snapshot: dict, params: dict) -> dict:
             loneliness_shape,
             social_time_shape
         )
-        fatigue_avoid = _compute_fatigue_avoid(energy, fatigue_shape)
+        fatigue = state_snapshot.get("fatigue", 0.0)
+        fatigue_avoid = _compute_fatigue_avoid(energy, fatigue_shape, fatigue=fatigue)
         obsolescence_anxiety = _compute_obsolescence_anxiety(
             external_change_rate,
             unresolved,
@@ -438,6 +444,64 @@ def compute_drive_vector(state_snapshot: dict, params: dict) -> dict:
 
     except Exception:
         return DriveVector().to_dict()
+
+
+def apply_affect_multiplier(
+    drive_vector: dict,
+    dopamine_tone: float,
+    oxytocin_tone: float,
+) -> dict:
+    """
+    多巴胺基调 + 催产素基调对驱动力的连续调制（v11.x）。
+
+    dopamine_tone 高 → curiosity/info_hunger/approach_drive/approach_explore 被放大
+    oxytocin_tone 高 → approach_social 被额外放大（温暖残留使她更渴望连接）
+
+    dopamine 公式：mult = 0.5 + dopamine_tone * 1.0
+        tone=0.5（基准）→ mult=1.0（无影响）
+        tone=1.0 → mult=1.5（+50%）
+        tone=0.0 → mult=0.5（-50%）
+
+    oxytocin 公式：mult = 0.5 + oxytocin_tone * 0.5
+        tone=0.5（基准）→ mult=0.75（-25%，轻微抑制）
+        tone=1.0 → mult=1.0（+0%，回到基准）
+        tone=0.75 → mult=0.875（-12.5%）
+        tone=0.25 → mult=0.625（-37.5%）
+
+    全程连续，无 if-else。
+
+    参数：
+        drive_vector  : compute_drive_vector() 的输出字典
+        dopamine_tone : 多巴胺基调 [0, 1]，基准 0.5
+        oxytocin_tone : 催产素基调 [0, 1]，基准 0.5
+
+    返回：
+        调制后的 drive_vector（原地修改，无拷贝）
+    """
+    # dopamine: 调制 curiosity/info_hunger/approach_drive/approach_explore
+    d_mult = 0.5 + dopamine_tone * 1.0
+    for key in ("curiosity", "info_hunger", "approach_drive", "approach_explore"):
+        if key in drive_vector:
+            drive_vector[key] = min(1.0, drive_vector[key] * d_mult)
+
+    # oxytocin: 额外调制 approach_social（只有 >0.5 时才放大）
+    o_mult = 0.5 + oxytocin_tone * 0.5
+    if "approach_social" in drive_vector:
+        drive_vector["approach_social"] = min(1.0, drive_vector["approach_social"] * o_mult)
+
+    return drive_vector
+
+
+def apply_dopamine_multiplier(
+    drive_vector: dict,
+    dopamine_tone: float,
+) -> dict:
+    """
+    多巴胺基调对驱动力的连续调制（v11.x，保持向后兼容）。
+
+    已迁移至 apply_affect_multiplier，建议优先使用新函数。
+    """
+    return apply_affect_multiplier(drive_vector, dopamine_tone, 0.5)
 
 
 # ============================================================================

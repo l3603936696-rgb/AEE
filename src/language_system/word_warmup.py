@@ -228,5 +228,101 @@ def inject_warmup_candidates(
             print(f"[WordWarmup] {len(warm_words)} warm words → {injected} variants", flush=True)
     except Exception as e:
         logger.debug(f"[WordWarmup] failed: {e}")
-    
+
     return current_candidates
+
+
+# ============================================================================
+# Rest Consolidation — 休息期间的词汇巩固
+# ============================================================================
+
+# 各 action_type 的基础巩固权重（dict dispatch，无 if-else）
+REST_CONSOLIDATION_WEIGHT = {
+    "rest": 1.0, "comfort": 0.3, "idle": 0.1,
+    "sleep": 0.8, "avoid": 0.0, "seek": 0.0,
+    "explore": 0.0, "repair": 0.0,
+}
+
+# 每 tick 最大合成记录数
+MAX_SYNTHETIC_PER_TICK = 2
+
+# 合成记录的消力效率（低于真实表达 0.1~0.5，高于阅读注入 0.0）
+SYNTHETIC_QUENCHING_EFFICIENCY = 0.05
+
+# fatigue=0 时仍保留的最低巩固强度比例
+MIN_REST_STRENGTH_RATIO = 0.2
+
+
+def _entity_to_state_dict(entity) -> dict:
+    """提取 entity 的驱动力状态用于消力记录。"""
+    fields = [
+        "loneliness", "fatigue", "curiosity", "somatic_tone",
+        "approach_drive", "info_gap", "unresolved",
+    ]
+    result = {}
+    for f in fields:
+        val = getattr(entity, f, None)
+        result[f] = float(val) if val is not None else 0.0
+    return result
+
+
+def consolidate_during_rest(entity, action_type: str) -> int:
+    """
+    Rest 期间的词汇巩固：对最近接触但未达标的词产生合成消力记录。
+
+    类比人在休息时反刍最近学过的东西。不是重新获取信息，
+    而是把已接触的词在内部"重新匹配"一遍，加速从冷到温的进程。
+
+    返回注入的合成记录数。
+    """
+    base_weight = REST_CONSOLIDATION_WEIGHT.get(action_type, 0.0)
+    fatigue = float(getattr(entity, "fatigue", 0.5))
+    rest_strength = base_weight * (MIN_REST_STRENGTH_RATIO + (1.0 - MIN_REST_STRENGTH_RATIO) * fatigue)
+    n_synthetic = int(MAX_SYNTHETIC_PER_TICK * rest_strength)
+
+    # n_synthetic == 0 → 本 action 不巩固，range(0) 自然跳过
+    quenching = getattr(entity, "_quenching", None)
+    stats = get_word_stats(entity)
+    current_tick = getattr(entity, "tick", 0)
+
+    # 候选：连续 priority scoring
+    # warmth = hit_count/3 ∈ [0,1]，gap = 1-warmth（已 warm 则 gap=0，自然排除）
+    # recency = 距上次出现的新近度 ∈ [0,1]
+    # priority = gap * (warmth * 0.4 + recency * 0.6)
+    #   gap 项保证已 warm 的词 priority=0
+    #   warmth * 0.4 偏好"差一点就 warm"的词（hit=2 > hit=1）
+    #   recency * 0.6 偏好最近接触过的词
+    candidates = []
+    for word, s in stats.items():
+        warmth = min(1.0, s["hit_count"] / 3.0)
+        gap = 1.0 - warmth
+        recency = max(0.0, 1.0 - (current_tick - s["last_tick"]) / max(1, RECENCY_WINDOW_TICKS))
+        priority = gap * (warmth * 0.4 + recency * 0.6)
+        candidates.append((word, priority))
+
+    candidates.sort(key=lambda x: x[1], reverse=True)
+
+    injected = 0
+    for i in range(min(n_synthetic, len(candidates))):
+        word, _pri = candidates[i]
+        # priority 极低时合成效率也趋近 0，自然不影响
+        eff = SYNTHETIC_QUENCHING_EFFICIENCY * min(1.0, _pri * 5.0)
+        try:
+            quenching.record(
+                drive_state=_entity_to_state_dict(entity),
+                expression=word,
+                delta_unresolved_before=eff,
+                delta_unresolved_after=0.0,
+                tick=current_tick,
+                template_idx=-2,   # -2 = 合成巩固记录，区别于 -1 的阅读注入
+            )
+            injected += 1
+        except Exception:
+            pass
+
+    if injected > 0:
+        _words = [c[0] for c in candidates[:injected]]
+        print(f"[WordWarmup] Rest consolidation: {injected} synthetic records for {_words}", flush=True)
+        logger.info(f"[WordWarmup] Rest consolidation: {injected} records")
+
+    return injected

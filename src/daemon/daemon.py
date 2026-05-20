@@ -35,6 +35,39 @@ from ..entity_zero_iteration import run_pipeline, get_entity_state
 from ..llm import create_llm_callable
 
 
+# ============================================================================
+# 安全序列化
+# ============================================================================
+
+def _safe_json_serializable(obj):
+    """
+    递归清理对象，只保留 JSON-safe 的值。
+    - dict/list/tuple → 递归清理
+    - 基本类型（str/int/float/bool/None）→ 原样返回
+    - Episode / dataclass / namedtuple → 转 dict
+    - 不可序列化的对象 → 转 str
+    """
+    if isinstance(obj, dict):
+        return {k: _safe_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_safe_json_serializable(x) for x in obj]
+    elif isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    else:
+        # dataclass / Episode / namedtuple / etc.
+        try:
+            if hasattr(obj, "__dataclass_fields__"):
+                return {f: _safe_json_serializable(getattr(obj, f)) for f in obj.__dataclass_fields__}
+            elif hasattr(obj, "_asdict"):
+                return obj._asdict()
+            elif hasattr(obj, "__dict__"):
+                return {k: _safe_json_serializable(v) for k, v in vars(obj).items()}
+        except Exception:
+            pass
+        return str(obj)
+
+
+
 logger = logging.getLogger(__name__)
 
 # 加载 .env（API keys — DeepSeek）
@@ -82,7 +115,10 @@ class IPCServer:
         if self._is_windows:
             # Windows: TCP Socket
             self._server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 262144)
+            self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 262144)
             self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._server_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self._server_sock.bind(("127.0.0.1", self._ipc_port))
         else:
             # Unix: Unix Domain Socket — WSL 下可能不支持，fallback 到 TCP
@@ -136,6 +172,20 @@ class IPCServer:
                 if self._running:
                     logger.error(f"[IPCServer] accept error: {e}")
 
+    def _send_all(self, sock: socket.socket, data: bytes) -> None:
+        """循环发送直到所有字节送达，处理 Windows send() 缓冲区填满的情况。"""
+        total = len(data)
+        sent = 0
+        while sent < total:
+            try:
+                n = sock.send(data[sent:])
+            except BrokenPipeError as e:
+                raise IPCError(f"Connection broken while sending: {e}")
+            if n == 0:
+                raise IPCError("Socket returned 0 bytes during send")
+            sent += n
+        logger.debug(f"[IPCServer] _send_all: {total} bytes sent ({total - sent} retried)")
+
     def _handle_client(self, client: socket.socket) -> None:
         """处理单个客户端连接"""
         try:
@@ -149,9 +199,9 @@ class IPCServer:
 
             body = self._recv_exact(client, length)
             request = IPCRequest.from_json(body.decode("utf-8"))
-            response = self._dispatch(request)
-            client.sendall(len(response).to_bytes(4, "big"))
-            client.sendall(response.encode("utf-8"))
+            response_bytes = self._dispatch(request).encode("utf-8")
+            self._send_all(client, len(response_bytes).to_bytes(4, "big"))
+            self._send_all(client, response_bytes)
         except Exception as e:
             logger.error(f"[IPCServer] handle error: {e}")
         finally:
@@ -175,8 +225,8 @@ class IPCServer:
         resp = IPCResponse(type="error", id="", ok=False, error=message)
         try:
             data = resp.to_json().encode("utf-8")
-            client.sendall(len(data).to_bytes(4, "big"))
-            client.sendall(data)
+            self._send_all(client, len(data).to_bytes(4, "big"))
+            self._send_all(client, data)
         except Exception:
             pass
 
@@ -219,14 +269,38 @@ class IPCServer:
             debug=debug,
             llm_callable=self._llm_callable,
         )
+
+        # 清理 result 中所有不可 JSON 序列化的字段（Episode 等）
+        safe_result = _safe_json_serializable(result)
+
+        # 只返回必要的公开字段，防止响应过大
+        safe_response = safe_result.get("response", {})
+        safe_decision = safe_result.get("decision", {})
+        raw_snapshot = safe_result.get("state_snapshot", {})
+        snapshot = self._clean_state_snapshot(raw_snapshot)
+
         return {
-            "response": result.get("response", {}),
-            "decision": result.get("decision", {}),
-            "state_snapshot": result.get("state_snapshot", {}),
-            "tick": result.get("tick", entity.tick),
-            "total_ms": result.get("total_ms", 0),
-            "trace": result.get("trace", []) if debug else [],
+            "response": safe_response,
+            "decision": safe_decision,
+            "state_snapshot": snapshot,
+            "tick": safe_result.get("tick", entity.tick),
+            "total_ms": safe_result.get("total_ms", 0),
+            "trace": safe_result.get("trace", []) if debug else [],
         }
+
+    def _clean_state_snapshot(self, raw: dict) -> dict:
+        """
+        从 state_snapshot 中剔除内部字段，防止响应过大导致 IPC 截断。
+        只保留可安全暴露给外部的字段。
+        """
+        PUBLIC_FIELDS = {
+            "tick", "energy", "loneliness", "fatigue", "stress",
+            "boredom", "curiosity", "info_gap", "approach_drive", "avoid_drive",
+            "somatic_tone", "anger", "anxiety", "fear", "joy", "sadness",
+            "unresolved", "self_trust", "attachment", "empathy",
+            "last_interaction_context",
+        }
+        return {k: v for k, v in raw.items() if k in PUBLIC_FIELDS}
 
     def _handle_status(self) -> dict:
         """处理状态查询请求"""

@@ -7,7 +7,7 @@ info_queue.py — 后台信息队列模型（算力账本 v2.0）
 五种信息维度：
     social     : 社交信息缺失（沉默时长驱动，有输入则归零）
     cognitive  : 预测误差/未解决问题（高 unresolved 时积累，有 rest 则消化）
-    info       : 信息缺口（沉默时长驱动，有 explore 则消化）
+    info       : 信息缺口（沉默时长驱动，explore 入队，rest/comfort 消化）
     meta       : 基础元信息（每轮极微量增长，不可避免）
     emotional  : 负面情绪开销（somatic_tone 偏负时启动额外线程）
 
@@ -82,6 +82,17 @@ PROCESS_RATE: Dict[str, float] = {
 # rest 期间的消化放大系数（前台无对话，全部算力给后台）
 REST_PROCESS_MULTIPLIER: float = 2.5
 
+# explore 向 info 队列注入的信息量（替代旧版的直接清零）
+EXPLORE_INFO_INTAKE: float = 0.30
+# 消化时：每处理 1.0 info → info_gap 下降多少
+# 使得 3 次 explore 后 rest → info_gap 下降约 0.60，与旧版一致
+INFO_DIGEST_TO_GAP_RATIO: float = 0.667
+# comfort 的 info 消化速率（每 tick）
+COMFORT_INFO_PROCESS_RATE: float = 0.05
+# explore 时 info_gap 的即时微降（"我知道我找到东西了"信号）
+# 主要吸收仍靠 rest/comfort 消化，这只是探索的即时负反馈
+EXPLORE_IMMEDIATE_GAP_REDUCTION: float = 0.05
+
 # stress 高优先级通道的算力分配比例
 STRESS_PRIORITY_ALLOCATION: float = 0.20  # stress 占用总算力的 20%
 
@@ -125,6 +136,9 @@ class InfoQueue:
 
     # ---- Tick 标记（防止同一 tick 内重复积累）----
     _accumulated_tick: int = -1  # 已完成积累的 tick 编号
+
+    # ---- 上一轮 process() 消化了多少 info（供 update_engine 的 info_gap 计算使用）----
+    _last_info_processed: float = 0.0
 
     # ---- 积累（每轮调用）----
 
@@ -182,8 +196,7 @@ class InfoQueue:
             cognitive_growth = unresolved * COGNITIVE_ACCUM_RATE * dt / 60.0
             self.queues["cognitive"] = min(1.0, self.queues["cognitive"] + cognitive_growth)
 
-        # ---- info：info_gap 高则积累，explore 时消化 ----
-        # info_gap 本身随沉默时长增长，explore 会清空（由管线通知）
+        # ---- info：沉默时自然积累，explore 注入新信息，rest/comfort 消化 ----
         info_growth = self._silence_driven_growth(
             time_since_last_info, SILENCE_ACCUM_RATE["info"], dt
         )
@@ -223,6 +236,9 @@ class InfoQueue:
         """
         multiplier = REST_PROCESS_MULTIPLIER if self.in_rest else 1.0
 
+        # 记录处理前的 info 队列量，用于计算消化量
+        previous_info = self.queues["info"]
+
         if action_type == "rest" or self.in_rest:
             # rest：全力消化所有队列
             for dim in INFO_DIMENSIONS:
@@ -232,19 +248,25 @@ class InfoQueue:
                 self.queues[dim] = max(0.0, self.queues[dim] - rate)
 
         elif action_type == "explore":
-            # explore：清空 info 队列（获取了新信息并整合）
-            self.queues["info"] = max(0.0, self.queues["info"] - 0.80)
+            # explore：只采集信息入队（notify_explore 已完成），不消化任何队列
+            pass
 
         elif action_type == "comfort":
-            # comfort：清空 social 队列（社交信息缺失被处理）
+            # comfort：清空 social 队列 + 轻微消化 info
             self.queues["social"] = max(0.0, self.queues["social"] - 0.80)
+            self.queues["info"]    = max(0.0, self.queues["info"]    - COMFORT_INFO_PROCESS_RATE)
 
         elif action_type == "seek":
             # seek：部分消化 social 和 cognitive
-            self.queues["social"] = max(0.0, self.queues["social"] - 0.30)
+            self.queues["social"]    = max(0.0, self.queues["social"]    - 0.30)
             self.queues["cognitive"] = max(0.0, self.queues["cognitive"] - 0.20)
 
         # idle / avoid：队列维持不变，自然积累
+
+        # 记录 info 消化量（供 update_engine 的 info_gap 计算使用）
+        self._last_info_processed = previous_info - self.queues["info"]
+        if self._last_info_processed < 0:
+            self._last_info_processed = 0.0
 
         # 记录历史（保留最近 5 轮）
         self.history.append(dict(self.queues))
@@ -262,8 +284,12 @@ class InfoQueue:
         self.in_rest = False
 
     def notify_explore(self) -> None:
-        """explore 动作执行，清空 info 队列。"""
-        self.queues["info"] = 0.0
+        """explore 动作执行，向 info 队列注入待消化信息（不是清零）。"""
+        self.queues["info"] = min(1.0, self.queues["info"] + EXPLORE_INFO_INTAKE)
+
+    def get_last_info_processed(self) -> float:
+        """返回上一轮 process() 消化的 info 量。"""
+        return self._last_info_processed
 
     # ---- 读取接口（供 compute_load 和 emergent_behavior 使用）----
 

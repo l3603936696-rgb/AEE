@@ -35,12 +35,13 @@ import time as _time
 from typing import Any, Dict, List, Optional
 
 from ..world_model_update.defaults import get_param
-from .info_queue import InfoQueue
+from .info_queue import InfoQueue, EXPLORE_INFO_INTAKE, INFO_DIGEST_TO_GAP_RATIO, EXPLORE_IMMEDIATE_GAP_REDUCTION
 from .compute_load import (
     compute_energy_delta,
     compute_stress_delta,
     compute_queue_trigger_rest,
 )
+from .dopamine_tone import compute_boredom_futility_delta
 
 
 # ============================================================================
@@ -56,6 +57,17 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
 
 def _clamp(val: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, val))
+
+
+def _param(p: Any, key: str, default: float) -> float:
+    """从参数快照读取参数（支持 dict 和 ParameterSnapshot）。"""
+    if p is None:
+        return default
+    if hasattr(p, "get"):
+        v = p.get(key)
+        if v is not None:
+            return float(v)
+    return default
 
 
 # ============================================================================
@@ -398,6 +410,34 @@ def update_state(
     except Exception:
         new_boredom = current_boredom
 
+    # ---- boredom_futility：徒劳性倦怠积累（v11.x 多巴胺闭环）----
+    # 多因子叠加：dopamine_tone（低时促进积累）+ stress（高时促进）+ somatic_tone（负面时促进）
+    # 全程连续，无 if-else
+    try:
+        current_boredom_futility = _safe_float(new_state.get("boredom_futility"), 0.0)
+        dopamine_tone = _safe_float(new_state.get("dopamine_tone"), 0.5)
+        stress_val = _safe_float(new_state.get("stress"), 0.0)
+        somatic_tone = _safe_float(new_state.get("somatic_tone"), 0.0)
+        futility_delta = compute_boredom_futility_delta(
+            current_boredom_futility=current_boredom_futility,
+            dopamine_tone=dopamine_tone,
+            stress=stress_val,
+            somatic_tone=somatic_tone,
+            idle_seconds=metabolic_seconds,
+            param_snapshot=param_snapshot,
+        )
+        new_boredom_futility = min(1.0, max(0.0, current_boredom_futility + futility_delta))
+        # ---- 催产素抑制倦怠积累（v11.x）----
+        # oxytocin_tone > 0.5 时，减少 futility 积累（被接住的余韵缓解徒劳感）
+        # 效果 bounded：oxytocin_tone=1.0 且 dt=1min 时最多减少 0.5% futility 积累
+        # 不覆盖长期警觉，oxytocin_k 保持小值
+        oxytocin_tone = _safe_float(new_state.get("oxytocin_tone"), 0.5)
+        oxytocin_k = _param(param_snapshot, "boredom_futility.oxytocin_k", 0.005)
+        oxytocin_benefit = max(0.0, oxytocin_tone - 0.5) * 2 * oxytocin_k * metabolic_seconds / 60.0
+        new_boredom_futility = max(0.0, new_boredom_futility - oxytocin_benefit)
+    except Exception:
+        new_boredom_futility = _safe_float(new_state.get("boredom_futility"), 0.0)
+
     # ---- fatigue：探索积累，rest / comfort 恢复 ----
     try:
         fatigue_base = current_fatigue
@@ -415,13 +455,17 @@ def update_state(
     except Exception:
         new_fatigue = current_fatigue
 
-    # ---- info_gap：沉默积累，explore 时清空 ----
+    # ---- info_gap：自然积累，explore 即时微降，rest/comfort 消化队列时大幅下降 ----
     try:
-        if action_type == "explore":
-            info_gap_delta = -0.60  # 探索获取新信息
-        else:
-            # info_gap 随沉默时长自然积累
-            info_gap_delta = 0.002 * metabolic_seconds / 60.0
+        # 自然积累（沉默时长）
+        info_gap_natural = 0.002 * metabolic_seconds / 60.0
+        # 消化降低（rest/comfort 处理队列 → info_gap 下降）
+        info_digested = info_queue.get_last_info_processed()
+        info_gap_digest = info_digested * INFO_DIGEST_TO_GAP_RATIO
+        # 探索即时反馈（"知道自己找到了东西"，连续信号无需 if/else）
+        _is_explore = float(action_type == "explore")
+        info_gap_explore = _is_explore * EXPLORE_IMMEDIATE_GAP_REDUCTION
+        info_gap_delta = info_gap_natural - info_gap_digest - info_gap_explore
         new_info_gap = _clamp(info_gap + info_gap_delta)
     except Exception:
         new_info_gap = info_gap
@@ -470,6 +514,7 @@ def update_state(
     new_state["loneliness_surface"] = _clamp(float(current_state.get("loneliness_surface", current_loneliness * 0.3)))
     new_state["unresolved"]  = _clamp(new_unresolved)
     new_state["boredom"]    = _clamp(new_boredom)
+    new_state["boredom_futility"] = new_boredom_futility
     new_state["fatigue"]    = _clamp(new_fatigue)
     new_state["stress"]     = _clamp(new_stress)
     new_state["relief_debt"]= _clamp(new_relief_debt, 0.0, float("inf"))
@@ -569,17 +614,25 @@ if __name__ == "__main__":
     ok4 = remaining == 1  # surprise 放回队尾，数量不变
     print(f"  {'✓' if ok4 else '✗'} surprise 放回队尾（需真实 world_model 才能解决 → stress 下降）")
 
-    # ---- 测试 5: explore 行为 → info_gap 下降 ----
-    print("\n【测试 5】explore 行为 → info_gap 显著下降")
+    # ---- 测试 5: explore 不直接降低 info_gap（信息待消化），rest 才消化 ----
+    print("\n【测试 5】explore → 队列积压，rest → info_gap 下降")
     reset_info_queue()
     state5 = {"energy": 0.5, "loneliness": 0.3, "unresolved": 0.2, "boredom": 0.2,
                "fatigue": 0.3, "stress": 0.1, "relief_debt": 0.0, "somatic_tone": 0.1,
                "info_gap": 0.8, "time_since_last_social": 60.0, "time_since_last_info": 600.0,
                "pending_surprises": [], "_last_prediction_error": 0.0}
     decision5 = {"action_type": "explore", "target": "information"}
-    result5 = update_state(state5, decision5, 60.0, params)
-    ok5 = result5["info_gap"] < 0.8
-    print(f"  {'✓' if ok5 else '✗'} info_gap: 0.8 → {result5['info_gap']:.4f}（explore 应显著降低）")
+    result5_explore = update_state(state5, decision5, 60.0, params)
+    # explore 不直接降低 info_gap（只积压到队列），因此变化很小（仅自然积累）
+    explore_delta = result5_explore["info_gap"] - 0.8
+    ok5a = abs(explore_delta) < 0.05  # explore 后 info_gap 基本不变
+    print(f"  {'✓' if ok5a else '✗'} explore info_gap: 0.8 → {result5_explore['info_gap']:.4f}（delta={explore_delta:+.4f}，explore 不直接降低）")
+    # rest 后 info_gap 下降（队列被消化）
+    result5_rest = update_state(result5_explore, {"action_type": "rest", "target": "self"}, 60.0, params)
+    rest_delta = result5_rest["info_gap"] - 0.8
+    ok5b = rest_delta < -0.05  # rest 后 info_gap 明显下降
+    print(f"  {'✓' if ok5b else '✗'} rest info_gap: 0.8 → {result5_rest['info_gap']:.4f}（delta={rest_delta:+.4f}，rest 消化后下降）")
+    ok5 = ok5a and ok5b
 
     # ---- 测试 6: 无决策时正常运行 ----
     print("\n【测试 6】decision=None 时正常运行")

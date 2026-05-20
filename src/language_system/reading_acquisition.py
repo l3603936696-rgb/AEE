@@ -66,6 +66,41 @@ def _extract_phrases(text: str, max_phrases: int = 100) -> List[str]:
     return result
 
 
+def store_reading_paragraph(entity, text: str, tick: int) -> None:
+    """
+    explore 读取后，将原始段落存入 entity._reading_paragraphs。
+
+    缓冲区策略：
+        - 含 warm words 的段落：优先存储（驱逐旧段落）
+        - 不含 warm words 的段落：仅在缓冲区有空位时存储
+    这能防止"无效"文本驱逐包含有效词汇的旧段落。
+    """
+    MAX_STORED_PARAGRAPHS = 20
+
+    # 快速热词过滤
+    try:
+        from .word_warmup import get_warm_words
+        warm_words = get_warm_words(entity, min_hits=1, min_best_efficiency=0.0)
+        has_warm_word = bool(warm_words) and any(w in text for w in warm_words)
+    except Exception:
+        has_warm_word = True  # 出错时保守保留
+
+    paragraphs = getattr(entity, "_reading_paragraphs", None)
+    if paragraphs is None:
+        entity._reading_paragraphs = []
+        paragraphs = entity._reading_paragraphs
+
+    if not has_warm_word:
+        # 无效段落：仅在有空位时追加
+        if len(paragraphs) < MAX_STORED_PARAGRAPHS:
+            paragraphs.append({"text": text, "tick": tick})
+    else:
+        # 有效段落：追加并驱逐最老的
+        paragraphs.append({"text": text, "tick": tick})
+        if len(paragraphs) > MAX_STORED_PARAGRAPHS:
+            paragraphs.pop(0)
+
+
 def harvest_from_reading(
     text: str,
     entity_state: Any,
@@ -167,6 +202,13 @@ def harvest_from_reading(
             f"[ReadAcq] Candidate: '{word}' "
             f"(source='{source}', relevance={relevance:.3f})"
         )
+
+    # ── 存入阅读历史（供 rest 期间句式提取用）───────────────────────
+    try:
+        _tick = getattr(entity_state, "tick", 0)
+        store_reading_paragraph(entity_state, text, _tick)
+    except Exception as _store_err:
+        logger.debug(f"[ReadAcq] store_reading_paragraph skipped: {_store_err}")
 
     return results
 

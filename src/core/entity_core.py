@@ -168,6 +168,16 @@ class EntityCore:
     boredom_despair: float = 0.0   # 绝望性倦怠：整个策略库跑不通，做什么都没用
     boredom_futility: float = 0.0   # 徒劳性倦怠：优化成本超过收益，越来越不值得
 
+    # ---- 多巴胺基调（v11.x）----
+    # 由 prediction_error 驱动，调节驱动力和倦怠感积累速度
+    dopamine_tone: float = 0.5     # [0, 1]，基准 0.5；高→趋近/好奇增强，低→抑制+倦怠易积累
+    _dopamine_pe_smoothed: float = 0.0  # prediction_error 的 EMA 平滑值（不持久化）
+
+    # ---- 催产素基调（v11.x）----
+    # 由 connection_depth 正向溢出驱动，记录"连接成功后的温暖余韵"
+    # 每 tick 自然向 0.5 衰减，残留正向体验感
+    oxytocin_tone: float = 0.5     # [0, 1]，基准 0.5；>0.5 表示有温暖残留
+
     # 情绪粒子场状态（持久化，供下一轮恢复）
     emotion_particle_field: Dict[str, Any] = field(default_factory=dict)
 
@@ -353,6 +363,8 @@ class EntityCore:
             "curiosity": self.curiosity,
             "pending_surprises_count": len(self.pending_surprises),
             "pending_failures_count": len(self.pending_failures),
+            "dopamine_tone": self.dopamine_tone,
+            "oxytocin_tone": self.oxytocin_tone,
         }
 
     def add_snapshot(self) -> None:
@@ -396,6 +408,10 @@ class EntityCore:
             "emotion_particle_field": self.emotion_particle_field,
             "emotion_accumulators": self.emotion_accumulators,
             "last_emotion_tick": self.last_emotion_tick,
+            # v11.x 多巴胺基调
+            "dopamine_tone": self.dopamine_tone,
+            # v11.x 催产素基调
+            "oxytocin_tone": self.oxytocin_tone,
         }
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -438,10 +454,20 @@ class EntityCore:
             emotion_particle_field=data.get("emotion_particle_field", {}),
             emotion_accumulators=data.get("emotion_accumulators", {}),
             last_emotion_tick=data.get("last_emotion_tick", time.time()),
+            # v11.x 多巴胺基调
+            dopamine_tone=data.get("dopamine_tone", 0.5),
+            # v11.x 催产素基调
+            oxytocin_tone=data.get("oxytocin_tone", 0.5),
         )
 
     def tick(self) -> None:
-        """推进一个 tick：增加计数器，代谢物自然衰减。"""
+        """推进一个 tick：增加计数器，代谢物和多巴胺基调自然衰减。"""
         self.tick_index += 1
         # 代谢物每 tick 衰减 3%（约 33 tick 清空，即 ~33 分钟）
         self.failure_metabolite = max(0.0, self.failure_metabolite - 0.03)
+        # dopamine_tone 每 tick 向 0.5 回归 0.3%
+        self.dopamine_tone += (0.5 - self.dopamine_tone) * 0.003
+        self.dopamine_tone = max(0.0, min(1.0, self.dopamine_tone))
+        # oxytocin_tone 每 tick 向 0.5 回归 0.3%（半衰期约 230 分钟，需数据校准）
+        self.oxytocin_tone += (0.5 - self.oxytocin_tone) * 0.003
+        self.oxytocin_tone = max(0.0, min(1.0, self.oxytocin_tone))

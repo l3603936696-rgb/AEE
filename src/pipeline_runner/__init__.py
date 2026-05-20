@@ -93,7 +93,7 @@ from ..semantic.semantic_understanding import analyze_semantic
 from ..memory_bias.memory_bias import apply_memory_bias
 from ..concept_tags.concept_tags import generate_concept_tags
 from ..world_model_reader.world_model_reader import query_world_model
-from ..drive_system.drive_system import compute_drive_vector
+from ..drive_system.drive_system import compute_drive_vector, apply_affect_multiplier
 from ..thinking_system.thinking_system import think as thinking_think
 from ..decision_system.decision_system import perceive_all as _perceive_all, DEFAULT_PARAMS as DECISION_DEFAULT_PARAMS
 from ..decision_system.submodules.web_search import (
@@ -1109,6 +1109,13 @@ def run_pipeline(
         drive_vector_final["info_hunger"] = min(
             1.0, drive_vector_final.get("info_hunger", 0.0) + info_hunger_baseline
         )
+        # ---- 多巴胺基调 + 催产素基调调制（v11.x）----
+        # dopamine_tone 高 → curiosity/approach 增强；低 → 抑制
+        # oxytocin_tone 高 → approach_social 额外放大（温暖残留）
+        # 在 emotion_drive_modulation 之前施加，让情绪调制叠加在基调调制之上
+        _dopamine_tone = getattr(entity, "dopamine_tone", 0.5)
+        _oxytocin_tone = getattr(entity, "oxytocin_tone", 0.5)
+        drive_vector_final = apply_affect_multiplier(drive_vector_final, _dopamine_tone, _oxytocin_tone)
         _trace("drive_recomputed", True, drive_vector_final)
     except Exception as e:
         drive_vector_final = drive_vector  # fallback 到感知前的结果
@@ -1388,6 +1395,28 @@ def run_pipeline(
     except Exception as e:
         _trace("mirror_absorb", False, {}, str(e))
 
+    # ---- Step 8.35: dopamine_tone 更新（闭环）----
+    # prediction_error 经过 EMA 平滑 + 初期保护后，更新多巴胺基调
+    # 多巴胺基调调节驱动力（Step 8.0 后）和倦怠感积累
+    try:
+        _idle_for_dopamine = time.time() - entity.last_update_time
+        from ..state_update.dopamine_tone import compute_dopamine_tone_delta
+        dopamine_tone_delta = compute_dopamine_tone_delta(
+            prediction_error=entity._last_prediction_error,
+            entity=entity,
+            idle_seconds=_idle_for_dopamine,
+            param_snapshot=_snapshot_dict,
+            alpha=get_param(_snapshot_dict, "dopamine.pe_smooth_alpha", 0.3),
+        )
+        entity.dopamine_tone = max(0.0, min(1.0, entity.dopamine_tone + dopamine_tone_delta))
+        _trace("dopamine_tone", True, {
+            "dopamine_tone": round(entity.dopamine_tone, 4),
+            "dopamine_tone_delta": round(dopamine_tone_delta, 4),
+            "pe_smoothed": round(getattr(entity, "_dopamine_pe_smoothed", 0.0), 4),
+        })
+    except Exception as e:
+        _trace("dopamine_tone", False, {}, str(e))
+
     # ---- Step 8.4: connection_depth 计算（v3.0 + v3.5a/b/c）----
     # 计算时机：在 prediction_error 注入之后，output_layer 之前
     # 输入：prediction_error(8.3) + somatic_tone_delta(0→8.05) + tension_level(8.1)
@@ -1470,7 +1499,31 @@ def run_pipeline(
         loneliness_intermediates = {}
         _trace("loneliness_update", False, {}, str(e))
 
-    # ---- Step 8.4c: 观测层采集（可选步骤，失败不影响 loneliness 更新）----
+    # ---- Step 8.4c: 催产素基调更新（v11.x）----
+    # 时机：在 loneliness 更新之后计算
+    # 触发：connection_depth > 0 + 有社交输入 + somatic_tone_delta > 0（三门全开）
+    # 作用：温暖残留时放大 approach_social + 抑制 boredom_futility 积累
+    try:
+        from ..state_update.oxytocin_signal import compute_oxytocin_tone_delta_ex
+        _idle_for_oxytocin = time.time() - entity.last_update_time
+        oxytocin_delta, oxytocin_intermediates = compute_oxytocin_tone_delta_ex(
+            connection_depth=connection_depth_eff,
+            has_social_input=has_social_input,
+            somatic_tone_delta=somatic_tone_delta,
+            current_oxytocin_tone=entity.oxytocin_tone,
+            idle_seconds=_idle_for_oxytocin,
+            param_snapshot=_snapshot_dict,
+        )
+        entity.oxytocin_tone = max(0.0, min(1.0, entity.oxytocin_tone + oxytocin_delta))
+        _trace("oxytocin_tone", True, {
+            "oxytocin_tone": round(entity.oxytocin_tone, 4),
+            "oxytocin_delta": round(oxytocin_delta, 4),
+            "post_tone": oxytocin_intermediates.get("post_tone"),
+        })
+    except Exception as e:
+        _trace("oxytocin_tone", False, {}, str(e))
+
+    # ---- Step 8.5: 观测层采集（可选步骤，失败不影响 loneliness 更新）----
     try:
         # 初始化 observation_buffer（惰性创建，不持久化）
         if getattr(entity, "observation_buffer", None) is None:
@@ -2606,9 +2659,10 @@ def run_pipeline(
         #   writeback 会用 update_state 的结果覆盖 unresolved
         #   消力会扣减 unresolved
         #   问题张力是"新发现"产生的困惑，不应被同 tick 的消力抵消
+        #   只影响 unresolved（"我有不理解的东西"），不影响 info_gap（"我缺信息"）
+        #   info_gap 由 update_engine 的消化机制独立管理，否则 explore→question→info_gap↑ 形成死循环
         if _question_tension > 0:
             entity.unresolved = min(1.0, entity.unresolved + _question_tension)
-            entity.info_gap = min(1.0, entity.info_gap + _question_tension)
 
         # ---- 反馈回路（v1.0）----
         try:
@@ -2632,8 +2686,10 @@ def run_pipeline(
         entity.approach_drive = max(0.0, entity.approach_drive * 0.95)
         entity.avoid_drive = max(0.0, entity.avoid_drive * 0.95)
         entity.danger_level = max(0.0, min(1.0, new_state.get("danger_level", entity.danger_level)))
-        entity.time_since_last_info = max(0.0, entity.time_since_last_info + idle_seconds)
-        entity.time_since_last_social = max(0.0, entity.time_since_last_social + idle_seconds)
+        # 有社交输入时归零；无输入时累积
+        _social_reset = float(has_social_input)   # 1.0 or 0.0
+        entity.time_since_last_social = (entity.time_since_last_social + idle_seconds) * (1.0 - _social_reset)
+        entity.time_since_last_info = (entity.time_since_last_info + idle_seconds) * (1.0 - _social_reset)
         entity.last_update_time = time.time()
         entity.tick += 1
         # 反馈回路：streak 自然衰减

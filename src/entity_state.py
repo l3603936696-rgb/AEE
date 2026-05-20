@@ -500,6 +500,8 @@ class EntityState:
     # 厌倦双根源（独立衰减）
     boredom_despair: float = 0.0   # 绝望性倦怠
     boredom_futility: float = 0.0   # 徒劳性倦怠
+    dopamine_tone: float = 0.5     # 多巴胺基调（v11.x）
+    oxytocin_tone: float = 0.5     # 催产素基调（v11.x）
     # 情绪粒子场状态
     emotion_particle_field: dict = field(default_factory=dict)
     # 各层投影累计值
@@ -713,6 +715,9 @@ class EntityState:
             # v10.0 厌倦双根源
             "boredom_despair": getattr(self, "boredom_despair", 0.0),
             "boredom_futility": getattr(self, "boredom_futility", 0.0),
+            # v11.x 多巴胺基调
+            "dopamine_tone": getattr(self, "dopamine_tone", 0.5),
+            "oxytocin_tone": getattr(self, "oxytocin_tone", 0.5),
             # v11.5 情绪维度（锚点表匹配需要）
             "anxiety": self.anxiety,
             "fear": self.fear,
@@ -1105,6 +1110,8 @@ class EntityState:
             # v10.0/v11.0 情绪系统持久化恢复
             self.boredom_despair = float(data.get("boredom_despair", 0.0))
             self.boredom_futility = float(data.get("boredom_futility", 0.0))
+            self.dopamine_tone = float(data.get("dopamine_tone", 0.5))
+            self.oxytocin_tone = float(data.get("oxytocin_tone", 0.5))
             self.emotion_particle_field = data.get("emotion_particle_field", {})
             self.emotion_accumulators = data.get("emotion_accumulators", {})
             self.last_emotion_tick = float(data.get("last_emotion_tick", time.time()))

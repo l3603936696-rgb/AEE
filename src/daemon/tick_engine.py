@@ -644,6 +644,14 @@ class TickEngine:
                 "fragmentation_tone": decision.get("fragmentation_tone", ""),
             }
 
+            # ---- Rest 词汇巩固（后台整理最近接触的词）----
+            try:
+                from ..language_system.word_warmup import consolidate_during_rest
+                _action = emergent_behavior_dict.get("action_type", "idle")
+                consolidate_during_rest(self.entity, _action)
+            except Exception as _consol_err:
+                logger.debug(f"[TickEngine] Rest consolidation skipped: {_consol_err}")
+
             # ---- daemon 模式：把锚点表达桥接到行动系统（不用 LLM）----
             _pipeline_text = result.get("response", {}).get("text", "")
             if _pipeline_text and len(_pipeline_text) <= 20:

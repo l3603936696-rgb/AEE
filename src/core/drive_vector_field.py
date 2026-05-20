@@ -212,9 +212,14 @@ def compute_net_drives(
     antagonism_matrix: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> Dict[str, float]:
     """
-    计算每个驱动力的净力（去除被其他驱动力抑制的量）。
+    计算每个驱动力的净力（指数衰减抑制）。
 
-    net[dst] = max(raw[dst] - Σ(src ≠ dst) raw[src] * weight[src][dst], 0)
+    net[dst] = raw[dst] * exp(-Σ(src ≠ dst) raw[src] * weight[src][dst])
+
+    指数衰减保证：
+        - 信号被削弱但永远不会清零
+        - 多源叠加是连续递减，不会断崖归零
+        - 强信号在同等抑制下存活率更高
 
     参数：
         raw_drives: raw_drives 字典
@@ -230,16 +235,16 @@ def compute_net_drives(
 
     for dst in DRIVE_DIMS:
         raw_dst = raw_drives.get(dst, 0.0)
-        inhibition = 0.0
+        inhibition_sum = 0.0
 
         for src in DRIVE_DIMS:
             if src == dst:
                 continue
             raw_src = raw_drives.get(src, 0.0)
             weight = antagonism_matrix.get(src, {}).get(dst, 0.0)
-            inhibition += raw_src * weight
+            inhibition_sum += raw_src * weight
 
-        net = raw_dst - inhibition
+        net = raw_dst * math.exp(-inhibition_sum)
         net_drives[dst] = _clamp(net, 0.0, 1.0)
 
     return net_drives

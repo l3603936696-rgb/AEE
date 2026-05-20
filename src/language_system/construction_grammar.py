@@ -48,7 +48,7 @@ _MIN_STRENGTH = 0.01         # 低于此强度的构式被清除
 
 class ExpressionInstance:
     """一次成功表达的记录。"""
-    __slots__ = ("structure", "fillers", "drive_state", "efficiency", "tick")
+    __slots__ = ("structure", "fillers", "drive_state", "efficiency", "tick", "action_context", "is_heard")
 
     def __init__(
         self,
@@ -58,13 +58,15 @@ class ExpressionInstance:
         efficiency: float,
         tick: int,
         action_context: str = "",
+        is_heard: bool = False,  # 来自阅读/听到的，非原创表达
     ):
         self.structure = structure
         self.fillers = fillers
         self.drive_state = drive_state
         self.efficiency = efficiency
         self.tick = tick
-        self.action_context = action_context  # 记录实例产生时的行为意图
+        self.action_context = action_context
+        self.is_heard = is_heard
 
 
 class Construction:
@@ -74,6 +76,7 @@ class Construction:
         "drive_profile", "strength", "use_count",
         "born_tick", "last_used_tick",
         "action_profile",
+        "heard_ratio",  # 二手实例占比：0=原创，1=纯二手（影响强化奖励折扣）
     )
 
     def __init__(self, schema: str, born_tick: int = 0):
@@ -85,7 +88,8 @@ class Construction:
         self.use_count: int = 0
         self.born_tick: int = born_tick
         self.last_used_tick: int = born_tick
-        self.action_profile: Dict[str, int] = {}  # {action_type: use_count}，记录构式在哪种行为下被使用
+        self.action_profile: Dict[str, int] = {}  # {action_type: use_count}
+        self.heard_ratio: float = 0.0     # 二手实例占比（影响强化奖励折扣）
 
     def to_dict(self) -> dict:
         return {
@@ -99,6 +103,7 @@ class Construction:
             "born_tick": self.born_tick,
             "last_used_tick": self.last_used_tick,
             "action_profile": dict(self.action_profile),
+            "heard_ratio": self.heard_ratio,
         }
 
     @classmethod
@@ -112,6 +117,7 @@ class Construction:
         c.use_count = d.get("use_count", 0)
         c.last_used_tick = d.get("last_used_tick", 0)
         c.action_profile = dict(d.get("action_profile", {}))
+        c.heard_ratio = d.get("heard_ratio", 0.0)
         return c
 
 
@@ -165,6 +171,7 @@ class ConstructionLearner:
         efficiency: float,
         tick: int,
         second_anchor: str = "",
+        is_heard: bool = False,
     ) -> None:
         """
         记录一次成功的表达实例。
@@ -173,9 +180,10 @@ class ConstructionLearner:
             template_str  : 使用的模板（如 "好{anchor}啊……"）
             anchor        : 填入的锚点词
             drive_state   : 当时的驱动力状态
-            efficiency    : 消力效率
-            tick          : 当前 tick
-            second_anchor : 双锚点时的第二个词
+            efficiency   : 消力效率
+            tick         : 当前 tick
+            second_anchor: 双锚点时的第二个词
+            is_heard     : 是否来自阅读/听到的（非原创表达）
         """
         # 全量记录（v12: 去掉 efficiency 过滤，负样本也参与学习和抽取）
 
@@ -201,6 +209,8 @@ class ConstructionLearner:
                          if isinstance(v, (int, float))},
             efficiency=efficiency,
             tick=tick,
+            action_context="",       # 来自阅读的实例无行为上下文
+            is_heard=is_heard,
         )
         self._instances.append(inst)
 
@@ -224,8 +234,12 @@ class ConstructionLearner:
         """
         从实例缓冲区抽取新构式。
 
-        规则：同一个 structure 出现 ≥ _MIN_INSTANCES_FOR_SCHEMA 次，
-        且有 ≥ 2 个不同的填充词 → 可以抽取。
+        规则：同一个 structure 出现 ≥ 阈值次，且有 ≥ 2 个不同的填充词 → 可以抽取。
+
+        二手差异化门槛：
+            - heard_ratio > 0.5（纯二手型）  ：≥5 次
+            - 0 < heard_ratio ≤ 0.5（混合型） ：≥3 次
+            - heard_ratio = 0（纯原创型）     ：≥3 次（_MIN_INSTANCES_FOR_SCHEMA）
 
         返回：新抽取的构式数量。
         """
@@ -241,6 +255,21 @@ class ConstructionLearner:
             if len(instances) < _MIN_INSTANCES_FOR_SCHEMA:
                 continue
 
+            # ── 二手差异化门槛 ─────────────────────────────
+            heard_count = sum(1 for i in instances if i.is_heard)
+            heard_ratio = heard_count / len(instances)
+
+            if heard_ratio > 0.5:
+                min_needed = 5   # 二手主导型：需更多积累才可信
+            elif heard_ratio > 0:
+                min_needed = 3   # 混合型：有机会出现即可
+            else:
+                min_needed = _MIN_INSTANCES_FOR_SCHEMA  # 纯原创型
+
+            if len(instances) < min_needed:
+                continue
+            # ────────────────────────────────────────────
+
             # 检查槽位多样性：至少一个槽有 2+ 个不同填充词
             slot_words: Dict[int, Set[str]] = defaultdict(set)
             for inst in instances:
@@ -253,6 +282,7 @@ class ConstructionLearner:
 
             # 抽取！
             cx = Construction(schema, born_tick=current_tick)
+            cx.heard_ratio = heard_ratio  # 记录二手占比（影响后续强化奖励折扣）
             for inst in instances:
                 self._update_construction(cx, inst)
 
@@ -416,7 +446,9 @@ class ConstructionLearner:
             return
 
         # 强化/惩罚：效率高 → 加强，效率低 → 衰减
-        delta = _STRENGTH_BOOST * (efficiency - 0.03)
+        # 二手衰减：heard_ratio 越高，奖励越低（"听来的道理，总要亲身验证后才更深刻"）
+        二手衰减 = max(0.3, 1.0 - cx.heard_ratio * 0.7)
+        delta = _STRENGTH_BOOST * (efficiency - 0.03) * 二手衰减
         cx.strength = max(0.0, min(1.0, cx.strength + delta))
         cx.use_count += 1
         cx.last_used_tick = tick

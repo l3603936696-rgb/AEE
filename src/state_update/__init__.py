@@ -13,6 +13,8 @@ from .info_queue import InfoQueue
 from .compute_load import compute_queue_trigger_rest
 from .compute_coherence import compute_coherence, append_delta as append_coherence_delta
 from .compute_connection import compute_connection_depth, compute_loneliness_target
+from .dopamine_tone import compute_dopamine_tone_delta, compute_boredom_futility_delta
+from .oxytocin_signal import compute_oxytocin_tone_delta, compute_oxytocin_tone_delta_ex
 
 __all__ = [
     "update_state",
@@ -24,4 +26,8 @@ __all__ = [
     "append_coherence_delta",
     "compute_connection_depth",
     "compute_loneliness_target",
+    "compute_dopamine_tone_delta",
+    "compute_boredom_futility_delta",
+    "compute_oxytocin_tone_delta",
+    "compute_oxytocin_tone_delta_ex",
 ]

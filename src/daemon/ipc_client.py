@@ -74,8 +74,18 @@ class IPCClient:
         if self._sock is None:
             raise IPCError("Not connected")
         payload = data.encode("utf-8")
-        self._sock.sendall(len(payload).to_bytes(4, "big"))
-        self._sock.sendall(payload)
+        self._send_all(len(payload).to_bytes(4, "big"))
+        self._send_all(payload)
+
+    def _send_all(self, data: bytes) -> None:
+        """循环发送直到所有字节送达，处理 Windows send() 缓冲区填满的情况。"""
+        total = len(data)
+        sent = 0
+        while sent < total:
+            n = self._sock.send(data[sent:])
+            if n == 0:
+                raise IPCError("Socket connection broken during send")
+            sent += n
 
     def _recv_raw(self) -> str:
         """接收 JSON 文本（4 字节长度前缀）"""
@@ -87,7 +97,7 @@ class IPCClient:
         return body.decode("utf-8")
 
     def _recv_exact(self, n: int) -> bytes:
-        """精确接收 n 字节"""
+        """精确接收 n 字节（循环接收，防止 Windows 上 recv() 分批返回）"""
         if self._sock is None:
             raise IPCError("Not connected")
         data = b""
