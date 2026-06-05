@@ -16,6 +16,7 @@
 
 import json
 import logging
+import math
 import time
 import uuid
 from pathlib import Path
@@ -304,10 +305,31 @@ def _build_state_description(entity, emergent_behavior=None) -> str:
     if getattr(entity, "info_gap", 0) >= 0.5:
         drive_lines.append("有好奇心想要满足")
 
-    if getattr(entity, "approach_drive", 0) > getattr(entity, "avoid_drive", 0) + 0.2:
-        drive_lines.append("想要靠近")
-    elif getattr(entity, "avoid_drive", 0) > getattr(entity, "approach_drive", 0) + 0.2:
-        drive_lines.append("想要退缩")
+    # 连续驱动力描述（拮抗张力量化）
+    # 核心思路：犹豫是独立状态，不是趋近和回避的均值
+    # 用 sigmoid 将拮抗差值映射为连续方向信号，再结合总强度计算犹豫度
+    _ap = getattr(entity, "approach_drive", 0)
+    _av = getattr(entity, "avoid_drive", 0)
+    _net = _ap - _av
+    _total = max(_ap, _av)
+
+    if _total > 0.15:
+        # 方向信号：sigmoid(10*(net-0.05)) 将 [-1,1] net 映射为 [0,1]
+        # net > 0.05 → >0.5（趋近），net < 0.05 → <0.5（回避），net≈0.05 → =0.5
+        _direction = 1.0 / (1.0 + math.exp(-10 * (_net - 0.05)))
+        # 犹豫度：sigmoid(10*(0.5 - total)) 将 [0,1] total 映射为 [1,0]
+        # total 很小 → 犹豫度高，total 很大 → 犹豫度低
+        _hesitation = 1.0 / (1.0 + math.exp(-10 * (0.5 - _total)))
+
+        if _hesitation > 0.6:
+            drive_lines.append("有点犹豫，不知道该靠近还是退开")
+        else:
+            _level_idx = min(3, int(_total * 4))
+            if _direction > 0.5:
+                _texts = ("稍微有点想靠近", "想靠近", "很想靠近", "非常想靠近")
+            else:
+                _texts = ("稍微有点想退缩", "想退缩", "很想退缩", "非常想退缩")
+            drive_lines.append(_texts[_level_idx])
 
     # 体验描述：连续句，无标签
     exp_parts = []
@@ -477,8 +499,17 @@ def _analyze_tool_failures(
 
     每个工具的返回格式是 "[{tool_name}] {result}"，
     解析其中的错误类型、错误信息和触发命令。
+
+    v11.6 扩展：调用 intent_analyzer 推断 intended_action 和 missing_capability。
     """
     failures: list[FailureRecord] = []
+
+    # 尝试加载 intent_analyzer（可能不存在，降级处理）
+    try:
+        from ..tool_introspection import get_intent_analyzer
+        intent_analyzer = get_intent_analyzer()
+    except Exception:
+        intent_analyzer = None
 
     for (tool_name, args), result_str in zip(calls_made, results_so_far):
         # 剥离 "[{tool_name}] " 前缀
@@ -529,12 +560,36 @@ def _analyze_tool_failures(
             cmd = f"url: {args.get('url', '')}"
         cmd = cmd[:200]
 
+        # ---- v11.6: 推断意图和能力缺口 ----
+        intended_action = ""
+        missing_capability = ""
+        intent_confidence = 0.0
+
+        if intent_analyzer is not None:
+            try:
+                # 构造伪 failure_record 用于 intent_analyzer
+                raw_record = {
+                    "tool_name": tool_name,
+                    "error_type": error_type,
+                    "error_message": error_msg,
+                    "command_or_input": cmd,
+                }
+                capture = intent_analyzer.extract_from_failure(raw_record)
+                intended_action = capture.intended_action
+                missing_capability = capture.missing_capability
+                intent_confidence = capture.confidence
+            except Exception:
+                pass
+
         failures.append(FailureRecord(
             tool_name=tool_name,
             error_type=error_type,
             error_message=error_msg,
             command_or_input=cmd,
             severity=severity,
+            intended_action=intended_action,
+            missing_capability=missing_capability,
+            intent_confidence=intent_confidence,
         ))
 
     return failures
@@ -643,6 +698,9 @@ def _apply_somatic_feedback(
     # ---- V4: 修复成功 → 解决 pending_failure + 世界模型学习 ----
     _attempt_failure_resolution(entity, action_type, calls_made, results_so_far, failure_records)
 
+    # ---- v11.6: 能力缺口检测 + 工具合成触发 ----
+    _trigger_capability_gap_analysis(entity, failure_records)
+
     logger.debug(
         f"[SomaticFeedback] type={action_type} tools={tools_used} "
         f"failures={len(failure_records)} "
@@ -652,6 +710,83 @@ def _apply_somatic_feedback(
         f"unresolved={entity.unresolved:.3f} pending_failures={len(entity.pending_failures)}"
     )
 
+
+
+# ============================================================================
+# v11.6: 能力缺口检测 + 工具合成
+# ============================================================================
+
+def _trigger_capability_gap_analysis(
+    entity,
+    failure_records: list,
+) -> None:
+    """
+    被动触发：每次工具执行失败后，检测能力缺口并触发合成。
+
+    数据流：
+        失败记录 → intent_analyzer 提取意图
+                          → capability_gap_detector 检测缺口
+                                   → 缺口信号写入 entity._pending_tool_gaps
+                                   → entity.curiosity / unresolved 微调
+                                   → 供 pipeline 后续步骤使用
+    """
+    if not failure_records:
+        return
+
+    try:
+        from ..tool_introspection import get_gap_detector, get_intent_analyzer
+        gap_detector = get_gap_detector()
+        intent_analyzer = get_intent_analyzer()
+    except Exception as e:
+        logger.debug(f"[CapabilityGap] Module unavailable: {e}")
+        return
+
+    entity_tick = getattr(entity, "tick", 0)
+    unresolved = getattr(entity, "unresolved", 0.5)
+
+    for fr in failure_records:
+        try:
+            # 1. 提取意图
+            if isinstance(fr, dict):
+                raw_record = fr
+            else:
+                raw_record = {
+                    "tool_name": getattr(fr, "tool_name", ""),
+                    "error_type": getattr(fr, "error_type", ""),
+                    "error_message": getattr(fr, "error_message", ""),
+                    "command_or_input": getattr(fr, "command_or_input", ""),
+                }
+            capture = intent_analyzer.extract_from_failure(raw_record)
+
+            # 2. 检测缺口
+            gap = gap_detector.detect_gap(
+                intent=capture.intended_action or raw_record.get("tool_name", "未知操作"),
+                context={
+                    "error_type": raw_record.get("error_type", ""),
+                    "error_message": raw_record.get("error_message", ""),
+                },
+                unresolved_intensity=unresolved,
+            )
+
+            # 3. 缺口信号写入 entity（供 pipeline 后续使用）
+            pending_gaps = getattr(entity, "_pending_tool_gaps", [])
+            if not isinstance(pending_gaps, list):
+                pending_gaps = []
+            pending_gaps.append(gap.to_dict())
+            entity._pending_tool_gaps = pending_gaps
+
+            # 4. 缺口触发 somatic 信号（让她"感受到"自己缺了什么）
+            if gap.gap_intensity > 0.3:
+                entity.adjust("curiosity", gap.gap_intensity * 0.05)
+                entity.adjust("unresolved", gap.gap_intensity * 0.03)
+
+            logger.debug(
+                f"[CapabilityGap] intent='{capture.intended_action}' "
+                f"gap={gap.gap_intensity:.3f} missing={gap.unmatched_aspects}"
+            )
+
+        except Exception as e:
+            logger.debug(f"[CapabilityGap] Per-failure analysis error: {e}")
 
 
 # ============================================================================

@@ -51,6 +51,13 @@ from .connector_map import (
     sample_suffix_particle,
 )
 from .construction_grammar import ConstructionLearner
+from .state_pattern_memory import StatePatternMemory, run_symbol_tick
+from .stereotype_tree import (
+    StereotypeTree, StereotypeContext, get_speaker_context, ensure_tree,
+    apply_stereotype_bias, StereotypeForks,
+)
+from .stereotype_learner import StereotypeLearner, learn_speaker, quick_learn, init_tree_from_memory
+from .teacher import make_teaching, should_teach, select_concept
 
 __all__ = [
     "QuenchingTracker",
@@ -77,4 +84,19 @@ __all__ = [
     "score_suffix_particle",
     "sample_suffix_particle",
     "ConstructionLearner",
+    "StatePatternMemory",
+    "run_symbol_tick",
+    "StereotypeTree",
+    "StereotypeContext",
+    "get_speaker_context",
+    "ensure_tree",
+    "apply_stereotype_bias",
+    "StereotypeForks",
+    "StereotypeLearner",
+    "learn_speaker",
+    "quick_learn",
+    "init_tree_from_memory",
+    "make_teaching",
+    "should_teach",
+    "select_concept",
 ]

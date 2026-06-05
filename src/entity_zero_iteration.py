@@ -46,6 +46,7 @@ from .pipeline_runner import (
     _build_output_params,
     mock_llm_callable,
     run_world_model_update_cycle_async,
+    process_async_updates,
 )
 
 # ============================================================================

@@ -235,6 +235,7 @@ class Snap:
     wm_context: Dict[str, Any] = field(default_factory=dict)
     decision: Dict[str, Any] = field(default_factory=dict)
     prediction_error_map: Dict[str, float] = field(default_factory=dict)
+    input_class: str = ""  # ②a：输入事件主题标签（"" = 非输入触发，走既有 action 归纳）
 
     def to_dict(self) -> dict:
         return {
@@ -248,6 +249,7 @@ class Snap:
             "wm_context": dict(self.wm_context),
             "decision": dict(self.decision),
             "prediction_error_map": {k: round(float(v), 5) for k, v in self.prediction_error_map.items()},
+            "input_class": self.input_class,
         }
 
     @classmethod
@@ -280,6 +282,7 @@ class Snap:
                 wm_context=dict(data.get("wm_context", {})),
                 decision=dict(data.get("decision", {})),
                 prediction_error_map=_floats_only(data.get("prediction_error_map", {})),
+                input_class=str(data.get("input_class", "")),
             )
         except Exception:
             return cls()

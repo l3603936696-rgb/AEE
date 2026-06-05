@@ -109,7 +109,7 @@ DEFAULT_ANTAGONISM_MATRIX: Dict[str, Dict[str, float]] = {
     "curiosity": {
         "info_hunger":    0.20,   # 好奇心和信息饥饿争夺注意力
         "loneliness":     0.00,
-        "fatigue":        0.55,   # 累了就不想探索
+        "fatigue":        0.15,   # 好奇心轻微掩盖疲劳感，但不能真正消除
         "unresolved":     0.15,
         "somatic_tone_p": 0.00,
         "danger":         0.40,   # 危险时抑制探索
@@ -117,7 +117,7 @@ DEFAULT_ANTAGONISM_MATRIX: Dict[str, Dict[str, float]] = {
     "info_hunger": {
         "curiosity":      0.20,
         "loneliness":     0.15,   # 孤独时更想要陪伴而非信息
-        "fatigue":        0.55,   # 累了就不想获取信息
+        "fatigue":        0.15,   # 信息饥饿轻微掩盖疲劳感，但不能真正消除
         "unresolved":     0.15,
         "somatic_tone_p": 0.00,
         "danger":         0.35,   # 危险时减少信息搜索
@@ -125,14 +125,14 @@ DEFAULT_ANTAGONISM_MATRIX: Dict[str, Dict[str, float]] = {
     "loneliness": {
         "curiosity":      0.10,
         "info_hunger":    0.20,
-        "fatigue":        0.60,   # 累了就不想社交
+        "fatigue":        0.15,   # 孤独感轻微掩盖疲劳感，但不能真正消除
         "unresolved":     0.10,
         "somatic_tone_p": 0.00,
         "danger":         0.00,
     },
     "fatigue": {
-        "curiosity":      0.55,
-        "info_hunger":    0.55,
+        "curiosity":      0.70,   # 非对称：累到极限时好奇心说了不算
+        "info_hunger":    0.70,   # 非对称：累到极限时信息饥饿也压不过疲惫
         "loneliness":     0.60,
         "unresolved":     0.50,
         "somatic_tone_p": 0.30,  # 累了时正向情绪效果打折
@@ -142,7 +142,7 @@ DEFAULT_ANTAGONISM_MATRIX: Dict[str, Dict[str, float]] = {
         "curiosity":      0.10,
         "info_hunger":    0.10,
         "loneliness":     0.10,
-        "fatigue":        0.25,
+        "fatigue":        0.10,   # 未解决事项轻微掩盖疲劳感
         "somatic_tone_p": 0.00,
         "danger":         0.20,   # 危险时暂时搁置问题
     },

@@ -42,6 +42,18 @@ _MAX_SIMULATIONS = 4
 # 模拟结果对优先级的调制幅度
 _SIM_BOOST_SCALE = 0.3
 
+# 痛进入张力：让"预测会让我更痛"的动作在 mental_simulation 里被降权（自伤可回避）。
+# 注意：这同时抬高 compute_analysis_willingness（痛→更想分析），是有意的连带效应。
+# 偏小值，先跑再调，待 Owner 追认。
+_PAIN_TENSION_WEIGHT = 0.15
+
+# 预测致痛的直接回避惩罚（绕开 tension clamp）：tension 内的 pain 项在 tension
+# 饱和(≈1.0)时会被 clamp 吞掉 → 恰在高压态失去自伤回避（Codex P1）。故对预测
+# pain_rise 单独加一条连续惩罚项进 sim_boost，不经 clamp。与 _SIM_BOOST_SCALE
+# 同量级：满值致痛(rise=1)惩罚 ≈ 一次满额张力波动，足以把自伤动作压到地板优先级。
+# 偏大于纯 tension 通道是有意的——它才是饱和区唯一可靠的回避信号。先跑再调，待追认。
+_PAIN_AVOID_WEIGHT = 0.3
+
 # 候选行动类型映射（suggestion.action → action_type for world model）
 _ACTION_MAP = {
     "探索未知领域":       "explore",
@@ -65,13 +77,16 @@ def _estimate_tension(state: Dict[str, float]) -> float:
     stress = float(state.get("stress", 0.1))
     boredom = float(state.get("boredom", 0.2))
     info_gap = float(state.get("info_gap", 0.5))
-    # 加权合成（与 emotion_compute._estimate_tension 类似但独立）
+    pain = float(state.get("pain", 0.0))
+    # 加权合成（与 emotion_compute._estimate_tension 类似但独立）。
+    # pain 作为附加张力源：让模拟到"更痛"结局的自伤类动作被降权。
     tension = (
         unresolved * 0.25 +
         loneliness * 0.20 +
         stress * 0.20 +
         boredom * 0.15 +
-        info_gap * 0.20
+        info_gap * 0.20 +
+        pain * _PAIN_TENSION_WEIGHT
     )
     return max(0.0, min(1.0, tension))
 
@@ -167,11 +182,17 @@ def simulate_suggestions(
         simulated_tension = _estimate_tension(simulated_state)
         tension_reduction = current_tension - simulated_tension
 
+        # 预测致痛增量：绕开 tension clamp 的直接回避通道（Codex P1）。
+        # tension 饱和时 pain 项被 clamp 吞掉，此项仍保证自伤动作在高压态被降权。
+        pain_rise = max(0.0, float(simulated_state.get("pain", 0.0))
+                             - float(state.get("pain", 0.0)))
+
         # ---- 调制优先级 ----
         original_priority = float(suggestion.get("priority", 0.5))
         # 正 tension_reduction → 好（降低张力）→ 加优先级
         # 负 tension_reduction → 坏（增加张力）→ 减优先级
-        sim_boost = tension_reduction * _SIM_BOOST_SCALE
+        # 再减预测致痛惩罚（连续，不经 clamp）
+        sim_boost = tension_reduction * _SIM_BOOST_SCALE - pain_rise * _PAIN_AVOID_WEIGHT
         new_priority = max(0.05, min(1.0, original_priority + sim_boost))
 
         new_sug = dict(suggestion)
@@ -181,6 +202,7 @@ def simulate_suggestions(
             "tension_before": round(current_tension, 4),
             "tension_after": round(simulated_tension, 4),
             "tension_reduction": round(tension_reduction, 4),
+            "pain_rise": round(pain_rise, 4),
             "predicted_deltas": {k: round(v, 5) for k, v in predicted_deltas.items()},
             "boost": round(sim_boost, 4),
         }

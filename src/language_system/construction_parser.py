@@ -87,12 +87,20 @@ SOCIAL_PATTERNS: List[Tuple[str, str, Dict[str, float]]] = [
 
 _SOCIAL_COMPILED = [(re.compile(p), label, delta) for p, label, delta in SOCIAL_PATTERNS]
 
+# 向后兼容旧调用方（pipeline_runner 用）
+from .pronoun_direction import (  # noqa: E402
+    match_state_reference as _match_state_reference,
+    STATE_REF_WEIGHT, SELF_REF_WEIGHT, AMBIG_REF_WEIGHT, OTHER_REF_WEIGHT,
+)
+from .construction_learning import learn_constructions_from_input  # noqa: E402, F401
+
 
 # ─── 主接口 ──────────────────────────────────────────────────────────────────
 
 def parse_input(
     text: str,
     entity: Any,
+    speaker_id: str = "external",
 ) -> Dict[str, Any]:
     """
     用她自己的语言系统解析输入文本。
@@ -107,7 +115,7 @@ def parse_input(
         }
     """
     if not text or not text.strip():
-        return _empty_result()
+        return _empty_result(speaker_id)
 
     text = text.strip()
 
@@ -120,19 +128,28 @@ def parse_input(
     # ---- 3. 构式匹配：输入结构像她会说的哪种话？ ----
     cx_match, cx_delta, cx_fillers = _match_constructions(text, entity)
 
+    # ---- 3b. 说话者信任权重（刻板印象树 × 互动历史）----
+    try:
+        from .speaker_model import get_trust_weight as _get_trust_w
+        _speaker_trust = _get_trust_w(entity, speaker_id)
+    except Exception:
+        _speaker_trust = 0.40  # 陌生人基线，等效无节点时的默认值
+
     # ---- 4. 合并驱动力变化 ----
     drive_delta: Dict[str, float] = {}
 
     # 锚点词的驱动力影响（别人说"累"→ 她共情 → 自己也感到一点累）
+    # 信任权重调制：越不信任，共情衰减越大
     for word, score in recognized:
         word_delta = _get_word_delta(word, entity)
         for dim, val in word_delta.items():
-            drive_delta[dim] = drive_delta.get(dim, 0.0) + val * EMPATHY_COEFFICIENT * score
+            drive_delta[dim] = drive_delta.get(dim, 0.0) + val * EMPATHY_COEFFICIENT * _speaker_trust * score
 
-    # 社交意图的驱动力影响
+    # 社交意图的驱动力影响（信任权重调制：陌生人的"安慰"减半效果）
     for dim, val in social_delta.items():
-        drive_delta[dim] = drive_delta.get(dim, 0.0) + val
+        drive_delta[dim] = drive_delta.get(dim, 0.0) + val * _speaker_trust
 
+    # 构式共鸣：结构性匹配，与说话者信任无关，不做衰减
     for dim, val in cx_delta.items():
         drive_delta[dim] = drive_delta.get(dim, 0.0) + val * CX_MATCH_COEFFICIENT
 
@@ -142,13 +159,24 @@ def parse_input(
     cx_score = CX_COMPREHENSION if cx_match else 0.0
     comprehension = min(1.0, word_coverage + social_score + cx_score)
 
+    # ---- 6. 状态维度引用检测（含主语方向）----
+    _sref = _match_state_reference(text)
+    from .proposition_frame import build_proposition_frame
+    from .syntax_parser import parse_svo
+    proposition_frame = build_proposition_frame(text, parse_svo(text))
+
     result = {
-        "recognized_words": recognized,
-        "social_intent": social_intent,
-        "drive_delta": drive_delta,
-        "comprehension": comprehension,
+        "recognized_words":  recognized,
+        "social_intent":     social_intent,
+        "drive_delta":       drive_delta,
+        "comprehension":     comprehension,
         "construction_match": cx_match or "",
         "construction_fillers": cx_fillers,
+        "state_references":  _sref["dim_weights"],    # 各维度偏置幅度
+        "pronoun_weights":   _sref["pronoun_weights"], # 各维度"关于她"程度 0~1
+        "trust_weight":      _speaker_trust,           # 说话者信任权重 ∈ [0.15, 0.92]
+        "speaker_id":        speaker_id,
+        "proposition_frame": proposition_frame,
     }
 
     if comprehension > 0.1:
@@ -225,11 +253,11 @@ def _match_constructions(
     """
     cxg = getattr(entity, "_cxg_learner", None)
     if cxg is None:
-        return None, {}
+        return None, {}, []
 
     constructions = getattr(cxg, "_constructions", {})
     if not constructions:
-        return None, {}
+        return None, {}, []
 
     best_schema = None
     best_score = 0.0
@@ -343,7 +371,7 @@ def parse_self_speech(
     return result
 
 
-def _empty_result() -> Dict[str, Any]:
+def _empty_result(speaker_id: str = "") -> Dict[str, Any]:
     return {
         "recognized_words": [],
         "social_intent": "unknown",
@@ -351,84 +379,10 @@ def _empty_result() -> Dict[str, Any]:
         "comprehension": 0.0,
         "construction_match": "",
         "construction_fillers": [],
+        "trust_weight": 0.40,
+        "speaker_id": speaker_id,
     }
 
 
-# ─── 从输入中学习构式 ───────────────────────────────────────────────────────
-
-def learn_constructions_from_input(
-    text: str,
-    entity: Any,
-    parse_result: Dict[str, Any],
-) -> None:
-    """
-    从输入中提取构式喂给 ConstructionLearner。
-
-    两种来源：
-        1. 已知构式匹配：输入匹配了她学过的构式 → 强化 + 记录实例
-        2. 新构式发现：已知词周围的固定结构 → 记录为新实例
-
-    权重低于自身表达（heard_discount），因为是别人的话，没经过消力验证。
-    """
-    cxg = getattr(entity, "_cxg_learner", None)
-    if cxg is None:
-        return
-
-    comprehension = parse_result.get("comprehension", 0.0)
-    if comprehension < 0.2:
-        return  # 完全听不懂的话不学
-
-    drive_state = entity.to_state_snapshot() if hasattr(entity, "to_state_snapshot") else {}
-    heard_discount = 0.3  # 听到的效率 = 自己说的 30%
-
-    # ---- 1. 已匹配的构式：强化 + 记录实例 ----
-    cx_match = parse_result.get("construction_match", "")
-    cx_fillers = parse_result.get("construction_fillers", [])
-    if cx_match and cx_fillers:
-        # cx_match 使用 {0}/{1} 格式，record_instance 需要 {anchor}/{anchor2}
-        template = cx_match.replace("{0}", "{anchor}", 1).replace("{1}", "{anchor2}", 1)
-        cxg.record_instance(
-            template_str=template,
-            anchor=cx_fillers[0],
-            drive_state=drive_state,
-            efficiency=comprehension * heard_discount,
-            tick=getattr(entity, "tick", 0),
-            second_anchor=cx_fillers[1] if len(cx_fillers) > 1 else "",
-        )
-
-    # ---- 2. 新构式发现：已知词在文本中的上下文 → 抽取结构 ----
-    recognized = parse_result.get("recognized_words", [])
-    if not recognized:
-        return
-
-    for word, score in recognized:
-        if len(word) < 1 or score < 0.5:
-            continue
-
-        idx = text.find(word)
-        if idx < 0:
-            continue
-
-        prefix = text[:idx]
-        suffix = text[idx + len(word):]
-
-        # 前后缀太长说明不是简单构式
-        if len(prefix) > 6 or len(suffix) > 6:
-            continue
-        # 至少有前缀或后缀（纯词不是构式）
-        if not prefix.strip() and not suffix.strip():
-            continue
-
-        schema = f"{prefix}{{0}}{suffix}"
-
-        # 跳过已有构式（已在上面处理过）
-        if schema in cxg._constructions:
-            continue
-
-        cxg.record_instance(
-            template_str=schema.replace("{0}", "{anchor}"),
-            anchor=word,
-            drive_state=drive_state,
-            efficiency=comprehension * heard_discount,
-            tick=getattr(entity, "tick", 0),
-        )
+# learn_constructions_from_input 已迁移到 construction_learning.py，
+# 通过顶部 import 重新导出，外部调用方不需要修改。

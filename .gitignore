@@ -50,6 +50,14 @@ MEMORY.md
 .DS_Store
 Thumbs.db
 
+# Root-level runtime artifacts (moved to archive dirs, keep tracked)
+/daemon*.log
+/diag_output.txt
+/_watch_*.out
+/_dialogue_decoded.txt
+/tmp_*.py
+/tmp_*.json
+
 # Node (frontend)
 frontend/node_modules/
 frontend/dist/

@@ -1,0 +1,18 @@
+[mcp_servers.code-review-graph]
+command = 'C:\Python314\python.exe'
+args = [
+    "-m",
+    "code_review_graph",
+    "serve",
+]
+
+[mcp_servers.desktop-commander]
+command = "npx"
+args = [
+    "-y",
+    "@wonderwhy-er/desktop-commander@latest",
+]
+
+[mcp_servers.desktop-control]
+command = "python"
+args = ['E:\computer_use_mcp\server.py']

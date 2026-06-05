@@ -89,6 +89,30 @@ def _generate_trigger(action_type: str, context_label: str) -> str:
     return f"action_{action}_in_{ctx}"
 
 
+def _salient_fields(
+    deltas: Dict[str, float],
+    fields: List[str],
+    ratio: float,
+) -> List[str]:
+    """显著性剪枝：只保留 |delta| >= ratio × max|delta| 的字段。
+
+    动机：expected_deltas 在 EMA 路径里只进不出，会累积成十几字段的合取，
+    这类「多字段同时按某方向变」的超定预测在现实 tick 里几乎不可能整体兑现，
+    必然被验证判错、衰减到置信度地板（僵尸规则）。按相对显著性剪掉跟随主字段
+    小幅晃动的长尾，让规则保持紧凑、可被验证兑现。
+
+    比例式自适应（不设固定字段数 k）：max|delta| 为 0 时全保留（纯 stable 规则，
+    本就易兑现，无需剪枝）。
+    """
+    mags = [(f, abs(deltas.get(f, 0.0))) for f in fields]
+    max_mag = max((m for _, m in mags), default=0.0)
+    floor = max_mag * ratio
+    # max_mag <= 0 时 floor=0，min 子句恒真 → 全字段保留（dict 派发/连续比较，
+    # 属剪枝基础设施，非行为门控）。
+    kept = [f for f, m in mags if m >= floor]
+    return kept if kept else list(fields)
+
+
 def _generate_expect_from_deltas(
     deltas: Dict[str, float],
     fields: List[str],
@@ -231,6 +255,11 @@ def induct_rules(
             "world_model.prediction_ema_alpha",
             0.3,
         )
+        salience_ratio = get_raw_value(
+            param_snapshot,
+            "world_model.induction_salience_ratio",
+            0.3,
+        )
         max_new = max(1, int(get_raw_value(
             param_snapshot,
             "world_model.induction_max_new_rules_per_cycle",
@@ -306,7 +335,18 @@ def induct_rules(
                         5,
                     )
 
-                # 更新 expect / content 字符串
+                # 显著性剪枝：删掉跌出显著线的字段，让规则自己瘦身。
+                # 存量僵尸规则（累积成十几字段）触发再现时会被剪回主字段。
+                kept_fields = _salient_fields(
+                    existing.expected_deltas,
+                    list(existing.expected_deltas.keys()),
+                    salience_ratio,
+                )
+                existing.expected_deltas = {
+                    f: existing.expected_deltas[f] for f in kept_fields
+                }
+
+                # 更新 expect / content 字符串（基于剪枝后的字段）
                 all_fields = list(existing.expected_deltas.keys())
                 existing.predicts.expect = _generate_expect_from_deltas(
                     existing.expected_deltas, all_fields
@@ -334,9 +374,12 @@ def induct_rules(
                 if len(new_rules) >= max_new:
                     break
 
-                expect = _generate_expect_from_deltas(actual_deltas, significant)
+                # 显著性剪枝：新规则出生即保持紧凑，只留动得最大的主字段。
+                salient = _salient_fields(actual_deltas, significant, salience_ratio)
+
+                expect = _generate_expect_from_deltas(actual_deltas, salient)
                 content = _generate_content_from_deltas(
-                    action, context_label, actual_deltas, significant
+                    action, context_label, actual_deltas, salient
                 )
 
                 now = time.time()
@@ -354,12 +397,12 @@ def induct_rules(
                     context=context_label,
                     predicts=Predicts(trigger=trigger, expect=expect),
                     expected_deltas={
-                        f: round(actual_deltas[f], 5) for f in significant
+                        f: round(actual_deltas[f], 5) for f in salient
                     },
                     evidence=[],
                     _debug_meta={
                         "induction_method": "prediction_error_driven",
-                        "prediction_error_fields": significant,
+                        "prediction_error_fields": salient,
                         "avg_abs_error": round(
                             sum(abs(pred_error.get(f, 0.0)) for f in significant)
                             / len(significant), 4

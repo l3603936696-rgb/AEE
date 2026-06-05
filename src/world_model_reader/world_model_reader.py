@@ -151,6 +151,7 @@ def query_world_model(
                     "domain":      str,
                     "signal_type": str,      # "SEEK" | "AVOID" | "COMFORT"
                     "trigger_tags": List[str],  # 用于 coverage 计算
+                    "status":      str,      # "active" | "pending" | "decayed"
                 }
             ],
             "key_signals": {
@@ -192,12 +193,13 @@ def query_world_model(
                 continue
             if _match_rule(rule, tags_set):
                 matched.append({
-                    "rule_id":     str(rule.get("rule_id", "")),
+                    "rule_id":     str(rule.get("id") or rule.get("rule_id") or ""),
                     "content":     str(rule.get("content", "")),
                     "confidence":  float(rule.get("confidence", 0.0)),
                     "domain":      str(rule.get("domain", "")),
                     "signal_type": str(rule.get("signal_type", "")).upper(),
                     "trigger_tags": list(rule.get("trigger_tags", [])),
+                    "status":      str(rule.get("status", "active")),
                 })
 
         # ----- 计算 coverage -----

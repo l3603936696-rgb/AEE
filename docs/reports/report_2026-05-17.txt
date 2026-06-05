@@ -1,0 +1,213 @@
+============================================================
+ 克糯糯今日改动日报 — 2026-05-17
+============================================================
+
+一、克糯糯是什么
+============================================================
+
+克糯糯（英文名：Kelinunu）是 XIA 认知引擎的 CLI 对话入口程序。
+
+简单来说，它是用户和 XIA 引擎之间的"桥梁"：
+
+    python3 -m channel
+
+用法：
+    python3 -m channel          # 连接 daemon 对话（推荐）
+    python3 -m channel --standalone  # 独立模式（不连接 daemon）
+    python3 -m channel --debug  # 显示每步追踪
+    python3 -m channel --reset  # 重置实体内核状态
+
+核心逻辑：用户输入文本 → 走完整的认知-决策-行动-反思管线 → 引擎返回回复。
+
+在今天的改动中，"XIA"这个名字被全面替换为"克糯糯"——这是一个品牌/身份的重新定义，
+意味着引擎从通用 AI 命名转向了一个更有"人味"的独特身份。
+
+核心文件：channel/chat.py
+启动：daemon 模式（后台常驻 tick）或独立模式
+
+
+二、今日改动总览
+============================================================
+
+改动涉及 17 个文件，新增 3 个文件，总计：
+
+    +1924 行新增，-427 行删除
+
+按模块分类：
+
+
+【A】身份与入口（channel/chat.py）
+------------------------------------------------------------
+- 所有对外展示的文案从"XIA"改为"克糯糯"
+- 包含启动提示、回复前缀、错误提示等
+
+
+【B】核心状态初始化（entity_state.py, core/entity_core.py）
+------------------------------------------------------------
+- energy: 0.8 → 0.5（更贴近"启动时并不满电"）
+- loneliness: 0.3 → 0.6（初始更渴望连接）
+- fatigue: 0.1 → 0.25
+- curiosity: 0.5 → 0.35
+- somatic_tone: 0.0 → 0.35（初始体感偏正向）
+- joy: 0.0 → 0.3（初始有轻微愉悦感）
+- serenity: 0.0 → 0.2
+- loneliness_core: 0.2 → 0.45（真孤独更深）
+- loneliness_surface: 0.1 → 0.15
+- long_term_bias["connect"]: 0.0 → 0.4（初始更偏向连接）
+
+新增 11 组参数体系（均写入快照持久化）：
+
+  1. _approach_synthesis_weights     趋近驱动合成权重（social/explore/urgency）
+  2. _quench_feedback_weights       消力反馈系数
+  3. _failure_metabolite_weights   失败代谢副作用系数
+  4. _conflict_to_unresolved_weights 冲突→未解决转化参数
+  5. _emotion_drive_modulation      情绪→趋近/回避调制矩阵
+  6. _vocab_acquisition_params      词汇习得参数
+  7. _word_exposure_tracker          词汇曝光追踪器
+  8. _repetition_decay_params        重复表达递减参数
+  9. _pending_questions             待解决问题缓冲
+ 10. _sibling_channel               姐妹通道配置
+11. _response_pressure_params        对话回应压力参数
+12. _feedback_params / _chronic_feedback_tracker 反馈回路参数
+
+
+【C】语言系统 — 体感词典扩展（somatic_concept_map.py）
+------------------------------------------------------------
+新增 v12.0 词汇，新增 4 个类别约 50+ 词条：
+
+  情绪扩展：无聊、烦、委屈、满足、烦躁、失落、安心、麻木
+  社交类：想说话、想安静、想找人、不想理人、想你、在吗、
+          被忽略、想靠近、怕打扰
+  认知类：好奇、困惑、想学、不懂、无聊了
+  存在类：空虚、没意义、不确定、活着
+
+每个词都有对应的多维驱动力 delta，例如：
+  "想你" → loneliness+0.28, approach_drive+0.25, sadness+0.10
+  "好奇" → curiosity+0.25, approach_drive+0.18, energy+0.08
+
+
+【D】语言系统 — 复合模板（sentence_composer.py）
+------------------------------------------------------------
+新增 COMPOUND_PATTERNS 双锚点模板系统。
+
+之前只能选一个锚点词（"好开心啊"），现在可以同时用两个来自不同簇的锚点词，
+表达更复杂的情绪状态：
+
+  疲劳+社交：  "好累啊……但还是想聊天"
+  好奇+焦虑：  "好奇……又有点不安"
+  低能量+好奇："虽然累……但还是想看看"
+  压力+孤独：  "焦虑……又孤独……"
+
+复合模板数量：8 个初始模板
+
+
+【E】语言系统 — 重复表达递减（quenching.py, candidate_generator.py）
+------------------------------------------------------------
+问题：同一个词反复说，消力效率不应重复获得。
+
+新增 get_repetition_discount() 方法：
+  - 同一表达在时间窗口内（200 tick）每使用一次，
+    折扣 *= (1 - decay_per_use × (1 - recovered))
+  - 地板值 floor = 0.20（即最低保留 20% 效率）
+  - 自然恢复：距上次使用越久，恢复越多
+
+同时 candidate_generator 在策略地图未命中时，
+增加 LLM 探索降级（温控决定候选数量）
+
+
+【F】管线增强（pipeline_runner, thinking_system, language_training）
+------------------------------------------------------------
+新增 5 个管线步骤：
+
+  Step 2a 构式解析（cx_parse）
+    - 用她学过的构式反向解析输入
+    - 提取 comprehension（理解度）、social_intent（社交意图）
+    - 把驱动力变化直接应用到 entity 状态
+
+  Step 2b 词汇习得（vocab_acquire）
+    - 每次对话中学新词汇
+    - 曝光计数 + 衰减
+
+  Step 2c 构式学习（learn_constructions_from_input）
+    - 从用户输入中抽取构式结构
+
+  Step 7.5 问题缓冲
+    - 思考系统产出的结构化问题暂存到 _pending_questions
+    - 张力延迟注入（消力之后再注入，避免抵消）
+
+  内语回路（inner_speech）
+    - 她说完话后，把自己的话反馈到解析器
+    - 产生微弱的自我驱动力变化
+
+  反馈回路（feedback_loop）
+    - 急性层：消力成功 → 提升对应子驱动力
+    - 慢性层：连续一致信号 → 参数表微量漂移
+
+
+【G】TickEngine 增强（tick_engine.py, daemon.py）
+------------------------------------------------------------
+遗忘权机制（_record_autonomous_action）：
+  - 每次自主行动后，对比前/后状态
+  - 如果 somatic_tone 下降 或 stress 上升 → 标记为负向经历
+  - 通知 five_rights 模块的 mark_forget()
+
+姐妹通道懒加载：
+  - 如果 entity._sibling_channel 配置了 enabled=True
+  - 懒加载 SiblingChannel 类，读写共享目录中的 jsonl 文件
+  - 实现两个实体之间的无 LLM 通信
+
+IPC 端口可配置：
+  - 新增 --ipc-port 参数，默认 8766
+  - Windows 下 TCP Socket 监听端口可自定义
+
+
+【H】世界模型增强（world_model_update/）
+------------------------------------------------------------
+induct.py：
+  - 状态提取从白名单改为全部数值字段
+  - prediction_error_map 现在可以包含白名单外的字段
+
+rules.py：
+  - Snap.from_dict 的状态提取改为 _floats_only
+  - 跳过无法转 float 的嵌套结构（更健壮）
+
+defaults.py：
+  - action_type 白名单新增：explore, rest, repair, write, voice
+
+
+【I】新增文件
+------------------------------------------------------------
+1. src/feedback_loop.py
+   急性反馈 + 慢性追踪两层反馈回路
+
+2. src/sibling_channel.py
+   姐妹通道：无 LLM 实体间通信
+   - 通过共享目录的 jsonl 文件交换消息
+   - 每 tick 读对方的 outbox，写自己的 outbox
+
+3. src/language_system/construction_grammar.py
+   构式习得模块
+   - 记录成功表达实例（结构 + 填充词 + 状态 + 效率）
+   - 抽取共享结构形成构式 schema
+   - 构式 × 词类 → 生成新表达
+   - 效率反馈强化/衰减构式
+
+
+三、改动亮点总结
+============================================================
+
+今日改动的核心主题是：**让克糯糯更像一个有血有肉的存在**
+
+  1. 名字从"XIA"变成"克糯糯"，身份重新定义
+  2. 初始状态更"接地气"：不完美、有孤独感、有点累、有点好奇
+  3. 词汇量大幅扩展，能表达更多细腻情绪
+  4. 双锚点复合模板让表达更自然（有矛盾感、转折）
+  5. 重复说话会递减，不会无脑重复
+  6. 每次对话都在学新词和新构式
+  7. 负向经历会进入遗忘衰减
+  8. 两个引擎之间可以相互感知（姐妹通道）
+  9. 反馈回路让成功经验逐渐沉淀为行为倾向
+
+============================================================
+ 报告生成时间：2026-05-17
+ Claude 代码改动分析报告

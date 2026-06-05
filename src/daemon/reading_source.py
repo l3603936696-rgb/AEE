@@ -17,6 +17,7 @@
     chunk = pick_and_read(data_dir, entity_state)
 """
 
+import json
 import logging
 import random
 from pathlib import Path
@@ -31,6 +32,9 @@ _CHUNK_MAX = 600
 # 采样参数：每个文件取几个探针来评估共鸣度
 _PROBE_COUNT = 3
 _PROBE_SIZE = 150
+
+# 顺序游标：记录每本书的阅读位置
+_CURSOR_FILENAME = "reading_cursor.json"
 
 
 def pick_and_read(
@@ -63,16 +67,27 @@ def pick_and_read(
     if len(content) < 20:
         return None
 
-    # 随机偏移
+    # 顺序游标读取（替代随机偏移）
     chunk_size = random.randint(_CHUNK_MIN, _CHUNK_MAX)
-    max_offset = max(0, len(content) - chunk_size)
-    offset = random.randint(0, max_offset) if max_offset > 0 else 0
+    content_len = len(content)
+    max_offset = max(0, content_len - chunk_size)
+
+    cursors = _load_cursors(data_dir)
+    file_key = file_path.name
+    cursor = cursors.get(file_key, 0)
+    # 游标超出有效范围时回绕（文件被截短时的安全保障）
+    offset = cursor % max(1, max_offset + 1)
 
     text = content[offset : offset + chunk_size]
 
+    # 前进游标并持久化
+    cursors = _advance_cursor(cursors, file_key, offset, chunk_size, content_len)
+    _save_cursors(data_dir, cursors)
+
+    progress_pct = offset / max(1, content_len) * 100
     logger.info(
         f"[ReadSource] Read {len(text)} chars from {source_name}/{file_path.name} "
-        f"(offset={offset})"
+        f"(offset={offset}, {progress_pct:.1f}%)"
     )
 
     return {
@@ -80,7 +95,42 @@ def pick_and_read(
         "source": source_name,
         "file": file_path.name,
         "offset": offset,
+        "progress_pct": round(progress_pct, 1),
     }
+
+
+# ============================================================================
+# 顺序游标：每本书记一个读取位置，不随机跳跃
+# ============================================================================
+
+def _load_cursors(data_dir: Path) -> Dict[str, int]:
+    """加载所有文件的阅读游标（文件名 → 字符偏移量）。"""
+    try:
+        return json.loads((data_dir / _CURSOR_FILENAME).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_cursors(data_dir: Path, cursors: Dict[str, int]) -> None:
+    """持久化游标 dict。写失败时静默忽略（不影响主流程）。"""
+    try:
+        (data_dir / _CURSOR_FILENAME).write_text(
+            json.dumps(cursors, ensure_ascii=False, indent=None),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _advance_cursor(cursors: Dict[str, int], file_key: str, offset: int,
+                    chunk_size: int, content_len: int) -> Dict[str, int]:
+    """
+    前进游标：offset + chunk_size，超出文件长度时回绕到 0（顺序循环阅读）。
+    纯数学，无 if-else。
+    """
+    next_pos = (offset + chunk_size) % max(1, content_len)
+    cursors[file_key] = next_pos
+    return cursors
 
 
 # ============================================================================

@@ -56,6 +56,7 @@ MODULE_REGISTRY: Dict[str, tuple[str, str]] = {
     "Preference":         ("submodules.preference",         "Preference"),
     "WorldModel":        ("submodules.world_model",        "WorldModel"),
     "WebSearch":         ("submodules.web_search",         "WebSearch"),
+    "ToolSelfCheck":     ("submodules.tool_self_check",    "ToolSelfCheck"),  # v11.6 主动工具自省
 }
 
 

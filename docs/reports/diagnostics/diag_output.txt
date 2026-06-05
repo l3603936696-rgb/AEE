@@ -1,0 +1,24 @@
+=== 基础状态 ===
+tick=1934
+energy=0.462  loneliness=0.578
+joy=0.029  fatigue=0.669
+boredom=0.623  info_gap=0.233
+
+=== 解锁词汇: 162 个 ===
+  想你, 在吗, 空, 算了, 嗯, 累, 困, 好奇, 说说, 难受, 满足, 慢, 热, 酥, 开心, 舒服, 飘, 活着, 平静, 柔软
+  ... 还有 142 个
+
+=== 热词追踪: 21 个词, 热词(hit>=2): 0 个 ===
+
+=== Quenching: 2 条 ===
+
+=== WM 规则: 14 条 ===
+  {'id': 'wmu_8618f95a', 'content': 'energy高_loneliness低_info_gap高_fatigue低时explore→energy↓0.375,lonel
+  {'id': 'wmu_9065196b', 'content': 'energy低_loneliness低_info_gap低_fatigue低时explore→energy↓0.310,lonel
+  {'id': 'wmu_e7bb8eb3', 'content': 'energy低_loneliness低_info_gap低_fatigue低时rest→energy↑0.424,loneline
+  {'id': 'wmu_20012394', 'content': 'energy高_loneliness低_info_gap低_fatigue低时explore→energy↓0.373,fatig
+  {'id': 'wmu_4294a58a', 'content': 'energy高_loneliness低_info_gap低_fatigue高时explore→energy↓0.420,lonel
+
+=== 行为规则: 0 条 ===
+=== 概念曝光: 2 个 ===
+=== 策略图: 2 条 ===

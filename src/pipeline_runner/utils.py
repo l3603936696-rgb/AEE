@@ -1,10 +1,14 @@
 """Pipeline utilities — standalone functions extracted from pipeline_runner."""
 
+import logging
 import math
+import time
 from typing import Any, Dict, List, Optional
 
 from ..parameter_system.access import get_param
 from ..parameter_system.snapshot import ParameterSnapshot
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -222,3 +226,69 @@ def mock_llm_callable(
 ) -> tuple[Optional[str], Optional[str]]:
     """Mock LLM 调用，用于测试"""
     return "嗯，我听到了。", None
+
+
+# ============================================================================
+# v11.6: 工具缺口感知 + 合成触发
+# ============================================================================
+
+def _process_tool_gaps(entity, pending_gaps: list) -> None:
+    """
+    处理待合成的工具缺口。
+
+    工作流程：
+        1. 从 pending_gaps 找到最高强度的缺口
+        2. 调用 LLMSynthesizer 合成工具
+        3. 合成成功 → 注册到 registry
+        4. 写入日志供观察
+    """
+    if not pending_gaps:
+        return
+
+    top_gap = max(pending_gaps, key=lambda g: float(g.get("gap_intensity", 0)))
+    gap_intensity = float(top_gap.get("gap_intensity", 0))
+
+    if gap_intensity < 0.4:
+        logger.debug(f"[ToolSynthesis] Gap too weak ({gap_intensity:.3f}), skipping")
+        return
+
+    intent = top_gap.get("intent", "")
+    recent_synth_time = getattr(entity, "_last_tool_synthesis_time", 0.0)
+    if time.time() - recent_synth_time < 3600:
+        logger.debug("[ToolSynthesis] Skipping: synthesis within last hour")
+        return
+
+    recent_failures = []
+    for fr in getattr(entity, "pending_failures", [])[-5:]:
+        if hasattr(fr, "to_dict"):
+            recent_failures.append(fr.to_dict())
+        elif isinstance(fr, dict):
+            recent_failures.append(fr)
+
+    try:
+        from ..tool_synthesizer import synthesize_tool
+        result = synthesize_tool(
+            intent=intent,
+            gap_signal=top_gap,
+            failure_history=recent_failures,
+            current_tick=getattr(entity, "tick", 0),
+        )
+
+        if result.success and result.tool_definition:
+            tool_name = result.tool_definition.get("name", "unknown")
+            try:
+                from ..action_system.agent_tools import registry
+                registry.register_tool_definition(result.tool_definition)
+                registry.reload_tools()
+                entity._last_tool_synthesis_time = time.time()
+                logger.info(
+                    f"[ToolSynthesis] Registered new tool: {tool_name} "
+                    f"(gap={gap_intensity:.3f}, confidence={result.confidence:.3f})"
+                )
+            except Exception as reg_err:
+                logger.warning(f"[ToolSynthesis] Registry failed: {reg_err}")
+        else:
+            logger.debug(f"[ToolSynthesis] Synthesis failed: {result.error}")
+
+    except Exception as e:
+        logger.debug(f"[ToolSynthesis] Unexpected error: {e}")

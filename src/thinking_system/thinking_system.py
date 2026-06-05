@@ -87,60 +87,39 @@ def _dominant(dv: dict) -> Optional[str]:
 # ============================================================================
 
 def _rule_dimensions(rule: dict) -> set:
-    """提取一条规则涉及的维度集合。"""
-    dims: set = set()
+    """Extract dimension set from a rule.
 
-    # 路径1：rule.predicts["expect"] 或 rule.predicts["trigger"]
-    predicts = rule.get("predicts")
-    if isinstance(predicts, dict):
-        for v in predicts.values():
-            if isinstance(v, str):
-                # 简单分词：提取英文单词和中文连续字符
-                words = v.replace("_", " ").split()
-                for w in words:
-                    w = w.strip()
-                    if w and len(w) > 2:
-                        dims.add(w.lower())
-                # 中文字符提取（简单的单字bigram作为维度名近似）
-                chars = "".join(c for c in v if "\u4e00" <= c <= "\u9fff")
-                if chars:
-                    for i in range(len(chars) - 1):
-                        dims.add(chars[i:i+2])
-
-    # 路径2：rule.expected_deltas（显式维度列表）
+    Prefer expected_deltas keys (precise). Fall back to ASCII text extraction
+    only when expected_deltas is absent, to avoid corrupted content fields
+    inflating the denominator and killing relevance scores.
+    """
     deltas = rule.get("expected_deltas")
-    if isinstance(deltas, dict):
-        dims.update(deltas.keys())
-    elif isinstance(deltas, list):
-        for d in deltas:
-            if isinstance(d, str):
-                dims.add(d)
+    if isinstance(deltas, dict) and deltas:
+        return set(deltas.keys())
+    if isinstance(deltas, list) and deltas:
+        return {d for d in deltas if isinstance(d, str)}
 
-    # 路径3：从 content + context 提取（小写英文词，>2字符）
+    dims: set = set()
     for key in ("content", "context"):
         text = str(rule.get(key, "")).lower()
-        words = text.replace("_", " ").split()
-        for w in words:
-            w = w.strip().strip(".,!?，。！？、；：")
-            if w and len(w) > 2:
+        for w in text.replace("_", " ").split():
+            w = w.strip().strip(".,!?")
+            if w and len(w) > 2 and w.isascii():
                 dims.add(w)
-
     return dims
 
-
 # ============================================================================
-# 活跃维度计算（从驱动力向量推导出当前活跃的内部维度）
+# Active dimension calculation (from drive vector)
 # ============================================================================
 
-# 每个驱动力在状态空间中对应的方向向量（非硬编码映射，而是经验性的权重分布）
+# Empirical weight distribution: each drive's influence on state dimensions
 _DRIVE_STATE_WEIGHTS = {
-    "curiosity":            {"approach_drive": 0.4, "info_gap": 0.4, "unresolved": 0.2},
-    "info_hunger":         {"info_gap": 0.6, "unresolved": 0.4},
-    "obsolescence_anxiety": {"boredom": 0.5, "boredom_despair": 0.3, "boredom_futility": 0.2},
-    "loneliness_drive":    {"loneliness": 0.5, "loneliness_core": 0.3, "loneliness_surface": 0.2},
-    "fatigue_avoid":       {"fatigue": 0.4, "stress": 0.3, "energy": 0.3},
+    "curiosity":             {"approach_drive": 0.4, "info_gap": 0.4, "unresolved": 0.2},
+    "info_hunger":           {"info_gap": 0.6, "unresolved": 0.4},
+    "obsolescence_anxiety":  {"boredom": 0.5, "boredom_despair": 0.3, "boredom_futility": 0.2},
+    "loneliness_drive":      {"loneliness": 0.5, "loneliness_core": 0.3, "loneliness_surface": 0.2},
+    "fatigue_avoid":         {"fatigue": 0.4, "stress": 0.3, "energy": 0.3},
 }
-
 
 def _active_dimensions(dv: dict, state: Optional[dict]) -> set:
     """
@@ -194,10 +173,18 @@ def _active_dimensions(dv: dict, state: Optional[dict]) -> set:
 # 焦点规则选择（数据驱动，无硬编码维度映射）
 # ============================================================================
 
+# 输入材料对焦点规则优先级的最大调制幅度。
+# material_boost = best_similarity × relevance × MATERIAL_ATTENTION_SCALE
+# best_similarity=1 且 relevance=1 时 boost=0.5，等于 urgency 调制上限。
+# daemon tick 时 best_similarity=0，boost=0，不影响内生行为。
+MATERIAL_ATTENTION_SCALE: float = 0.5
+
+
 def _select_focal_rules(
     rules: List[dict],
     active_dims: set,
     params: dict,
+    input_context: Optional[Dict[str, Any]] = None,
 ) -> List[dict]:
     """
     选取与当前活跃维度重叠度最高的规则作为焦点。
@@ -205,16 +192,22 @@ def _select_focal_rules(
     相关度 = |rule_dims ∩ active_dims| / |rule_dims|
     低置信规则优先，高置信规则次之，同相关度下打散。
 
+    input_context 可选：当输入材料和 active_dims 方向一致时，相关规则
+    优先级被轻微提升（连续调制，drive_vector 本身不被修改）。
+
     参数：
-        rules      : 候选规则列表
-        active_dims: 当前活跃维度集合
-        params     : 思考参数
+        rules        : 候选规则列表
+        active_dims  : 当前活跃维度集合
+        params       : 思考参数
+        input_context: 输入材料标签（s02b 产出），可为 None
 
     返回：
         按优先级排序的焦点规则列表（最多 max_thinking_steps 条）
     """
     if not rules or not active_dims:
         return _fallback_select(rules, params)
+
+    best_sim = float((input_context or {}).get("best_similarity", 0.0))
 
     scored: List[tuple] = []
     for r in rules:
@@ -227,7 +220,10 @@ def _select_focal_rules(
         # 置信度低 → 紧急度更高
         urgency = max(0.0, (0.4 - conf) / 0.4) if conf < 0.4 else 0.0
 
-        score = relevance + urgency * 0.5
+        # 材料方向和规则方向的对齐加成（drive 不变，只调制焦点选择）
+        material_boost = best_sim * relevance * MATERIAL_ATTENTION_SCALE
+
+        score = relevance + urgency * 0.5 + material_boost
         scored.append((r, score, conf, relevance))
 
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -270,6 +266,25 @@ def _fallback_select(rules: List[dict], params: dict) -> List[dict]:
 #   - 高置信 → "这个规律还适用吗？"
 #   - 跨维度 → "这和另一个维度的关系是什么？"
 # 用规则内容动态生成，不靠固定模板组。
+
+# ── 提问「可回答性」权重（PLAN_learn_from_outside §4）──
+# 同等没把握时，偏向「外部真能回答」的规则发问。连续权重，乘进 priority，
+# 带小底、不硬清零、无比较门控（dict 派发 + 类型 guard，属基础设施）。
+#   input_*  触发：对话/阅读能直接回答 → 满权重（不削）。
+#   action_* 触发：只能自己反复试 → 压低但保留小底（仍可问，只是排后）。
+_ANSWERABILITY_BY_TRIGGER = {"input": 1.0, "action": 0.6}
+_ANSWERABILITY_DEFAULT = 0.8  # 未知/其它触发前缀：居中
+
+
+def _answerability_weight(rule: dict) -> float:
+    """按规则 trigger 前缀给「可被外部回答程度」连续权重 [0.6, 1.0]。"""
+    predicts = rule.get("predicts")
+    trigger = ""
+    if isinstance(predicts, dict):
+        trigger = str(predicts.get("trigger", ""))
+    prefix = trigger.split("_", 1)[0]
+    return _ANSWERABILITY_BY_TRIGGER.get(prefix, _ANSWERABILITY_DEFAULT)
+
 
 def _build_question(rule: dict, related_rules: List[dict]) -> Dict[str, Any]:
     """
@@ -320,6 +335,10 @@ def _build_question(rule: dict, related_rules: List[dict]) -> Dict[str, Any]:
     if has_boundary:
         base_priority *= 1.1
 
+    # 可回答性权重（§4）：外部能回答的规则不削，自身动作规则压低（带小底）。
+    answerability = _answerability_weight(rule)
+    base_priority *= answerability
+
     return {
         "type": q_type,
         "rule_id": _rid(rule),
@@ -329,7 +348,63 @@ def _build_question(rule: dict, related_rules: List[dict]) -> Dict[str, Any]:
                            if isinstance(deltas, dict) else {},
         "seed_check": seed_check,
         "has_boundary": has_boundary,
+        "answerability": round(answerability, 3),
         "priority": round(min(1.0, base_priority), 3),
+    }
+
+
+def _build_tool_capability_question(gap_signal: dict) -> dict:
+    """
+    从能力缺口信号生成 tool_capability 类型的问题。
+
+    v11.6 新增：XIA 发现自己缺少某种工具时的自省问题。
+
+    触发条件：
+        - entity._pending_tool_gaps 有未处理的高强度缺口
+        - 缺口强度 > 0.3
+
+    问题格式：
+        "我想 [action]，但我有没有这个能力？"
+
+    优先级 = gap_intensity × (1 - wm_confidence)
+    （缺口大但 WM 不确定时最想问）
+    """
+    intent = gap_signal.get("intent", "")
+    gap_intensity = float(gap_signal.get("gap_intensity", 0))
+    unmatched = gap_signal.get("unmatched_aspects", [])
+    capability_types = gap_signal.get("capability_types", [])
+
+    if gap_intensity < 0.3 or not intent:
+        return None
+
+    # 推断 action 类型
+    cap_to_action: dict[str, str] = {
+        "web_access": "探索网上内容",
+        "information_search": "搜索信息",
+        "code_execution": "执行代码",
+        "file_manipulation": "操作文件",
+        "network_access": "访问网络",
+        "api_call": "调用接口",
+        "debugging": "调试问题",
+    }
+    action_text = cap_to_action.get(capability_types[0], intent) if capability_types else intent
+
+    # 计算优先级
+    priority = min(1.0, gap_intensity * 0.8 + 0.1)
+
+    return {
+        "type": "tool_capability",
+        "intent": intent,
+        "action_text": action_text,
+        "gap_intensity": gap_intensity,
+        "unmatched_aspects": unmatched,
+        "capability_types": capability_types,
+        "dims": capability_types[:3],
+        "confidence": gap_signal.get("confidence", 0.5),
+        "expected_deltas": {},
+        "seed_check": None,
+        "has_boundary": True,
+        "priority": round(priority, 3),
     }
 
 
@@ -373,6 +448,12 @@ def render_question(q: Dict[str, Any]) -> str:
         return f"一直这样（{delta_text}），现在还成立吗？"
     elif q_type == "causal":
         return f"这些变化有因果关系吗？{delta_text}"
+    elif q_type == "tool_capability":
+        action_text = q.get("action_text", q.get("intent", "?"))
+        missing = ", ".join(q.get("unmatched_aspects", [])[:2])
+        if missing:
+            return f"我想{action_text}，但我好像缺少{missing}的能力。我有办法做到吗？"
+        return f"我想{action_text}，但我有这个能力吗？"
 
     return f"关于 {delta_text} 的不确定"
 
@@ -631,13 +712,14 @@ def think(
     entity_state: Optional[Any] = None,
     concept_tags: Optional[List[Any]] = None,
     attention_weights: Optional[Dict[str, float]] = None,
+    input_context: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """
     v5 统一流思考主入口。
 
     流程：
         1. 驱动力场 → 当前活跃维度集合
-        2. 活跃维度 → 焦点规则（按重叠度）
+        2. 活跃维度 → 焦点规则（按重叠度，材料方向可微调）
         3. 焦点规则 → 同时生成问题和建议（统一流）
         4. 感质调制 + 注意力调制
         5. 心智模拟验证建议
@@ -650,6 +732,7 @@ def think(
         params            : 思考参数
         somatic_signals    : 感质信号
         attention_weights  : 协方差追踪器输出的注意力权重
+        input_context     : 输入材料标签（s02b 产出），可为 None
     """
     try:
         params = {**DEFAULT_PARAMS, **(params or {})}
@@ -670,14 +753,20 @@ def think(
 
         # Step 2: 焦点规则
         start = time.time()
-        focal_rules = _select_focal_rules(rules, active_dims, params)
+        focal_rules = _select_focal_rules(rules, active_dims, params, input_context)
 
         # Step 3: 问题（基于焦点规则）
+        # 提问专用焦点：剔除 decayed 死规则。urgency 把「年轻待验证」和
+        # 「老化测烂已沉到地板」混为一谈（两者 conf 都低），死规则会霸占焦点槽
+        # 当成紧迫开放问题反复追问 → 认知信用永远点不亮。提问只针对活规则，
+        # 行动建议仍走原 focal_rules（解耦，零行为改动）。
+        _living_rules = [r for r in rules if r.get("status", "active") != "decayed"]
+        question_rules = _select_focal_rules(_living_rules, active_dims, params, input_context)
         questions = []
-        for rule in focal_rules:
+        for rule in question_rules:
             if (time.time() - start) * 1000 >= params["thinking_time_budget_ms"]:
                 break
-            questions.append(_build_question(rule, focal_rules))
+            questions.append(_build_question(rule, question_rules))
 
         # Step 4: 建议（从焦点规则推断 + 感质/注意力调制）
         suggestions = _build_suggestions(
@@ -696,6 +785,23 @@ def think(
             except Exception:
                 pass
 
+        # Step 5.5: 工具能力缺口自省问题（v11.6）
+        # 从 entity._pending_tool_gaps 中提取高强度缺口，生成 tool_capability 问题
+        tool_capability_questions = []
+        if entity_state is not None:
+            try:
+                pending_gaps = getattr(entity_state, "_pending_tool_gaps", [])
+                if pending_gaps:
+                    for gap in pending_gaps:
+                        q = _build_tool_capability_question(gap)
+                        if q is not None:
+                            tool_capability_questions.append(q)
+                    # 处理完后清空（避免重复提问）
+                    if hasattr(entity_state, "_pending_tool_gaps"):
+                        entity_state._pending_tool_gaps = []
+            except Exception:
+                tool_capability_questions = []
+
         # Step 6: 枝干联想检索
         branch_memories = []
         if entity_state is not None and concept_tags is not None:
@@ -709,9 +815,15 @@ def think(
             except Exception:
                 branch_memories = []
 
+        # 合并：规则问题 + 工具缺口问题
+        all_questions = questions + tool_capability_questions
+        all_questions.sort(key=lambda x: x.get("priority", 0.0), reverse=True)
+        # 最多保留 5 个问题
+        all_questions = all_questions[:5]
+
         return ThoughtPacket(
             suggestions=suggestions,
-            questions=questions,
+            questions=all_questions,
             branch_memories=branch_memories,
         ).to_dict()
 

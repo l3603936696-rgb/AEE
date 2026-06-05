@@ -1,0 +1,375 @@
+2026-05-15 改动报告
+===================
+
+核心主题：记忆系统的激活决策 + 语言生成去 LLM 化
+
+
+一、联想回忆机制（associative_recall.py）
+==========================================
+
+【文件】src/language_system/associative_recall.py（新建）
+
+【解决的问题】
+当 info_gap 高的时候，先从记忆里查有没有类似状态下的探索结果，
+有就直接用，省掉 LLM 调用。"回忆比探索便宜"——优化压力自然
+让她先走便宜路径。
+
+【核心机制】
+- 从 Episode DB 拉取候选（按行动类型筛选，同类行动优先）
+- 对每条 episode 计算综合收益：
+    综合收益 = 状态相似度 × 缓解量 × 时效衰减 × 重复衰减
+  其中：
+    - 状态相似度：当前驱动力场 vs 当时驱动力场的加权余弦相似度
+    - 时效衰减：episode 越老，收益 × exp(-age/τ)，τ = 120 tick
+    - 重复衰减：同一条 episode 被回忆 n 次，收益 × 1/(1+n)
+- 所有候选（含"沉默"模板）在同一个 softmax 里竞争
+- 沉默模板基础分高：当 recall 收益衰减到不如探索时，沉默自然胜出
+
+【设计原则】
+- 全连续：衰减函数自然归零，无 if-else 门控
+- 纯函数，不写文件
+- 排除了回忆自引用：output_text 主要是回忆元词（上次/之前/记得）的 episode 不参与竞争
+
+
+二、构式习得（construction_grammar.py）
+======================================
+
+【文件】src/language_system/construction_grammar.py（新建）
+
+【解决的问题】
+从成功的表达实例中自动抽取结构模式（构式），然后用构式 + 槽位
+词类生成模板库里没有的新句子。"她学会怎么说"而不是"预设她怎么说"。
+
+【核心机制】
+1. 记录（record_instance）：
+   每次成功表达 → (结构, 填充词, 状态, 效率, tick)
+   将 {anchor}/{anchor2} 替换为位置编号 {0}/{1}
+
+2. 抽取（extract_constructions）：
+   同一 structure 出现 ≥3 次 且 有 ≥2 个不同填充词 → 构式诞生
+   初始强度 = 实例平均效率 × 2.0
+
+3. 生成（generate_candidates）：
+   构式 × 槽位亲和度 × 驱动力匹配度 → 新模板
+   注入 compose_sentence 的 extra_templates 参与竞争
+
+4. 反馈（reinforce）：
+   如果 compose_sentence 选中了 CxG 生成的模板，
+   消力效率反馈回来更新构式强度：
+   Δstrength = 0.15 × (efficiency - 0.03)
+   效率高 → 加强，效率低 → 衰减
+
+5. 衰减：
+   每 tick 所有构式强度 × 0.995
+   strength < 0.01 且 use_count > 5 → 淘汰
+   超过 40 个上限 → 淘汰最弱的
+
+【设计原则】
+- 无预设语法：所有结构从数据中涌现
+- 槽位词类：成功填入同一槽的词形成词类，支持泛化
+- 构式上限 40 个，防止无限膨胀
+
+
+三、构式解析 / 耳朵（construction_parser.py）
+============================================
+
+【文件】src/language_system/construction_parser.py（新建）
+
+【解决的问题】
+用她自己学到的构式反向解析输入文本。和"嘴巴"对称：
+- 嘴巴：驱动力状态 → 构式 + 锚点 → 输出文本
+- 耳朵：输入文本 → 构式匹配 + 锚点提取 → 驱动力变化
+
+【三层解析】
+1. 锚点层：输入中有没有她认识的词？（词汇表匹配）
+2. 构式层：输入结构匹配她学过的哪个构式？（模式匹配）
+3. 意图层：这句话对她意味着什么？（驱动力映射）
+
+社交意图模式库（8 类）：
+- concern（关心）：loneliness -0.08, anxiety -0.06
+- comfort（陪伴）：loneliness -0.12, anxiety -0.06, stress -0.05
+- encourage（鼓励）：stress -0.06, energy +0.04
+- rejection（拒绝）：loneliness +0.08, avoid_drive +0.10, stress +0.06
+- praise（称赞）：joy +0.06, approach_drive +0.04
+- 等等
+
+理解程度 = 认识词数 × 0.3 + 社交意图明确度 × 0.4 + 构式匹配度 × 0.3
+
+【内语回路（parse_self_speech）】
+她听到自己说的话后产生驱动力微调：
+- 说了"累" → fatigue 微微上升 → 下一 tick 更想休息
+- 说了"想看看" → curiosity 微微上升 → 下一 tick 更想探索
+- 驱动力影响衰减至 15%（vs 外部输入的 100%）
+- 理解程度 = 自己的话 → 高（锚点层 × 0.4 + 构式层 × 0.5）
+
+这就是内语的自我调节功能：她不只是说话，她听到自己说话。
+
+
+四、递归构式（recursive_construction.py）
+========================================
+
+【文件】src/language_system/recursive_construction.py（新建）
+
+【解决的问题】
+构式的槽位可以填另一个构式，实现多层嵌套表达。
+
+【核心区别】
+- 平面构式：好{WORD}啊……          → "好累啊……"
+- 递归构式：好{WORD}啊……{CLAUSE}   → "好累啊……想找人说话但又没力气"
+                    ↓
+            {DESIRE}但又{OBSTACLE}
+               ↓          ↓
+          想找人说话     没力气
+
+【子句模式类型】
+- 欲望-障碍型："{desire}但又{obstacle}"、"想{action}又怕{fear}"
+- 因果型："{reason}因为……"、"大概是{reason}吧"
+- 结果型："然后就{result}"、"结果{result}"
+- 让步型："虽然{state}但还好"、"不过{result}"
+- 递进型："而且越来越{state}了"
+
+【驱动力驱动的槽位填充】
+根据驱动力状态和语义角色选择最合适的填充词：
+- desire：孤独 → 想找人，好奇 → 想看看，累 → 想休息
+- obstacle：累 → 没力气/太累了，焦虑 → 不敢，孤独 → 没人
+
+【设计原则】
+- 递归深度上限 = 3（防止无限嵌套）
+- 和 construction_grammar.py 兼容：递归结果填入平面构式的 CLAUSE 槽
+
+
+五、叙事记忆（narrative_fragments.py）
+====================================
+
+【文件】src/language_system/narrative_fragments.py（新建）
+
+【解决的问题】
+将 Episode 记忆转化为可说的叙事片段，但不取代锚点表达作为主力输出。
+
+【五类叙事】
+A. 行动回指：刚才{verb}……、之前{verb}……
+B. 因果正面（做了 → 变好了）：{verb}，好了点
+C. 因果负面（做了 → 没用/更差）：{verb}……但没什么用
+D. 状态轨迹（和之前比变化了）：越来越{trend_desc}了……
+E. 沉默：大多数 tick 该沉默
+
+【竞争机制】
+所有叙事模板（含沉默）在同一个 softmax 里竞争。
+沉默模板基础分 0.65（最高），只有 recency × salience 够高时叙事才赢。
+大多数 tick 锚点表达仍是主力。
+
+【上下文预计算】
+- recency：argmax(recency × salience) 取最显著的近期行动
+- improve：somatic_tone 变化 + stress 变化
+- trend_desc：从锚点词表选择最相关的趋势描述
+
+
+六、阅读习得升级（reading_acquisition.py）
+=========================================
+
+【文件】src/language_system/reading_acquisition.py（新建）
+
+【解决的问题】
+从 explore 动作的返回文本中筛选能准确描述自己状态的词。
+不是从外部语料库学统计分布，而是通过锚点验证——只有用对了才算学会。
+
+【机制】
+1. 从文本中提取候选短语（2-6 字中文），停词过滤
+2. 已在锚点表里的词跳过
+3. BGE 相似度过滤（< 0.35 跳过）
+4. 驱动力场着色：当前状态下相关才值得学
+   综合评分 = BGE 语义相关性 × 0.7 + 当前状态匹配度
+5. 注入升温系统：走冷→温→解锁流程（不是直接解锁）
+   每次 explore 最多习得 3 个候选（不过载）
+
+【设计原则】
+纯函数，不写文件。用对了才学会，而不是读到就会。
+
+
+七、Tick Engine 改造（tick_engine.py）
+====================================
+
+【文件】src/daemon/tick_engine.py
+
+【改动一：遗忘权】
+如果这次行动让状态变差（somatic_tone 下降 或 stress 上升），
+标记该 episode 进入遗忘衰减队列。
+negative_delta = (pre_st - post_st) + (post_stress - pre_stress)
+delta > 0.05 → mark_forget(episode_id=tick, negative_strength)
+
+【改动二：回忆优先于探索】
+在真实执行前先尝试联想回忆（attempt_recall）：
+- 回忆赢了 → 直接生成指称表达，跳过 LLM
+- 回忆不划算（沉默模板胜出）→ 走正常探索路径
+- 回忆产出的指称表达不写入 output_text（避免自引用循环）
+
+【改动三：工具类 vs 文本类 action 区分】
+TOOL_ACTIONS = {"explore", "repair", "seek", "write"}
+- 文本类 action（comfort/rest/avoid/idle）+ 有 training_override → 跳过 LLM
+- 工具类 action + 有 training_override → 仍走 LLM 执行路径
+
+【改动四：阅读习得管线】
+explore/seek 动作后自动触发 harvest_from_reading()：
+- 从返回文本提取候选词
+- 注入升温系统
+- 最多 3 个候选，相似度阈值 0.35
+
+
+八、句子组合器升级（sentence_composer.py）
+=========================================
+
+【文件】src/language_system/sentence_composer.py
+
+【复合模板（双锚点）】
+新增 COMPOUND_PATTERNS，支持 {anchor} + {anchor2} 跨簇组合：
+
+疲劳 + 社交需求：
+  "好{anchor}……但还是想{anchor2}"
+  "好累啊……但还是想找人"
+
+好奇 + 焦虑/恐惧：
+  "{anchor}……又有点{anchor2}"
+
+低能量 + 好奇：
+  "虽然{anchor}……但还是{anchor2}"
+  "虽然累……但还是好奇"
+
+压力/焦虑 + 孤独：
+  "{anchor}……又{anchor2}……"
+
+通用对立（任何两个不同簇）：
+  "又{anchor}又{anchor2}……"
+  "{anchor}……也有点{anchor2}"
+
+【复合模板评分函数】
+针对状态矛盾程度加分：双高 → 更多组合欲望。
+所有单锚点模板 + 所有复合模板在同一个 softmax 池竞争。
+
+【模板索引编码】
+- 正数：PATTERNS/extra 索引
+- 负数（-1000 起）：COMPOUND_PATTERNS 索引
+
+
+九、词汇表扩展（somatic_concept_map.py）
+=====================================
+
+【文件】src/language_system/somatic_concept_map.py
+
+新增约 30 个锚点词，每个词有完整的驱动力 delta 向量和簇归属：
+
+情绪扩展（8 个）：
+  无聊：boredom +0.25, approach_drive -0.10, energy -0.08
+  烦：stress +0.20, avoid_drive +0.15, somatic_tone -0.10
+  委屈：sadness +0.22, avoid_drive +0.12, somatic_tone -0.15
+  满足：joy +0.22, serenity +0.18, somatic_tone +0.15
+  烦躁：stress +0.20, anger +0.15, avoid_drive +0.12
+  失落：sadness +0.22, approach_drive -0.12, somatic_tone -0.12
+  安心：serenity +0.22, avoid_drive -0.15, anxiety -0.10
+  麻木：somatic_tone -0.08, approach_drive -0.10, curiosity -0.08
+
+社交词汇（9 个）：
+  想说话：loneliness +0.20, approach_drive +0.22
+  想安静：avoid_drive +0.20, approach_drive -0.15
+  想你：loneliness +0.28, approach_drive +0.25, sadness +0.10
+  想靠近：loneliness +0.18, approach_drive +0.25
+  怕打扰：avoid_drive +0.20, anxiety +0.15
+  等等
+
+认知词汇（5 个）：
+  好奇：curiosity +0.25, approach_drive +0.18
+  困惑：unresolved +0.22, stress +0.10
+  想学：curiosity +0.22, approach_drive +0.18
+  不懂：unresolved +0.20, anxiety +0.10
+
+存在性词汇（4 个）：
+  空虚：loneliness +0.20, sadness +0.18, somatic_tone -0.12
+  没意义：boredom +0.22, sadness +0.15, unresolved +0.15
+  不确定：unresolved +0.22, anxiety +0.15
+  活着：somatic_tone +0.12, energy +0.10, approach_drive +0.10
+
+新增 info_gap 维度纳入 ALL_DIMENSIONS。
+
+
+十、驱动力系统扩展（pipeline_runner/__init__.py）
+=============================================
+
+【文件】src/pipeline_runner/__init__.py
+
+【交际意图（communicative_intent）】
+她不只是自言自语——当孤独感高 + 趋近驱动高 + 未解决多 → 她想对人说话
+公式：ci_raw = loneliness×0.4 + approach×0.3 + unresolved×0.3
+被理解后（构式解析反馈）→ 下降：
+  - comfort/concern/encourage/praise → ci_quench = comprehension × 0.15
+  - rejection → ci_quench = -0.08（被拒绝反而更强）
+
+【构式语法学习状态恢复】
+每次 entity 恢复时重建 ConstructionLearner 和 RecursiveGenerator。
+每次输出后：
+  - 记录表达实例到构式习得器
+  - 如果选中的是 CxG 生成的模板 → 强化反馈
+  - 构式强度衰减 + 持久化
+  - 递归生成器衰减 + 持久化
+
+【叙事优先于锚点】
+叙事赢了（try_narrative_expression 返回非空）→ 生成叙事文本，跳过锚点输出。
+confidence = 0.80（叙事不需要降温置信度）
+
+【内语回路接入】
+在表达完成后将输出文本反馈到 parse_self_speech()，
+产生驱动力微调（comprehension > 0.1 时记录到 trace）。
+
+【构式解析管线】
+新增 Step 2a：构式解析（她自己的"耳朵"）
+- 用她学过的构式 + 词汇反向解析输入
+- 把解析结果注入 semantic_packet（comprehension、social_intent、construction_match）
+- 核心效果：把驱动力变化应用到 entity 状态
+
+【失败代谢物地板】
+failure_metabolite 最低值与 pending_failures 数量挂钩：
+floor = len(pending_failures) × 0.05
+防止长期失败积累后完全归零。
+
+【过期失败清理】
+TTL = 1800 tick（≈ 30 分钟），自动清理过期失败。
+
+
+十一、候选生成器改造（candidate_generator.py）
+==========================================
+
+【文件】src/language_system/candidate_generator.py
+
+策略地图未命中时：
+- 旧行为：返回空，由管线降级到 BGE
+- 新行为：LLM 探索生成候选词
+  - 温控决定候选数量：count = max(2, thermal.get_exploration_window())
+  - 语义分析打分（若有分析器）
+  - 返回 [(word, score), ...]
+
+这让语言系统在策略地图覆盖不到的状态下仍能探索新词汇。
+
+
+整体架构方向总结
+================
+
+今天的工作在继续推进"把 LLM 从核心语言生成链路中移除"：
+
+旧路径：
+  驱动力 → LLM → 文本
+
+新路径：
+  驱动力
+    ↓
+  ├─ 联想回忆（便宜路径）→ 直接生成指称表达
+    │
+    └─ 探索（贵路径）→ LLM → 阅读习得 → 新词汇/构式
+                                        ↓
+                              下一轮更多由自系统生成，更少依赖 LLM
+
+记忆调用的决策现在是全连续的：
+- 不是 if-else 门控
+- 而是衰减函数和 softmax 采样
+- 告诉系统记忆有什么用，让它自己归纳有用没用
+
+这本质上是把"什么时候用记忆"换成了更根本的问题：
+"你知道记忆有什么用吗？"——如果真正理解功能，就能自己判断。
+

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from . import induct as _induct
+from . import induct_input as _induct_input
 from . import verify as _verify
 from . import decay as _decay
 from . import merge as _merge
@@ -129,7 +130,16 @@ def run_update_cycle(
     latest_snap = _safe_snap(state_snapshot)
 
     # ---- Step 1: 归纳 ----
+    # 1a. action 触发归纳（既有路径，零改动）
     new_rules = _induct.induct_rules(
+        old_rules=current_rules,
+        snaps=all_snaps,
+        param_snapshot=param_snapshot,
+    )
+    # 1b. input 触发归纳（②c 旁路：带 input_class 的快照学「输入→后果」规则）
+    #     与 action 规则合流，一起进 merge/decay/verify。verify 收到 event_snaps 后
+    #     按 input_class 把 input 规则匹配到对应事件快照验证（见 verify_pending）。
+    new_rules += _induct_input.induct_input_rules(
         old_rules=current_rules,
         snaps=all_snaps,
         param_snapshot=param_snapshot,
@@ -188,6 +198,7 @@ def run_update_cycle(
             pending=pending_rules,
             snap=latest_snap,
             param_snapshot=param_snapshot,
+            event_snaps=all_snaps,
         )
     else:
         verified_rules = active_rules + pending_rules

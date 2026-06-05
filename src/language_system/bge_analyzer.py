@@ -36,9 +36,14 @@ def _get_bge_model():
         return _bge_model
 
     try:
+        import os as _os
+        from pathlib import Path as _Path
+        _os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+        _os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
         from sentence_transformers import SentenceTransformer
+        _model_path = _Path(__file__).parent.parent.parent / "models" / "bge-small-zh-v1.5"
         _bge_model = SentenceTransformer(
-            "BAAI/bge-small-zh-v1.5",
+            str(_model_path),
             local_files_only=True,
         )
         logger.info("[BGEAnalyzer] BGE-small-zh-v1.5 loaded successfully")

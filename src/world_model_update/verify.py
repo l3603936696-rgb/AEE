@@ -73,6 +73,45 @@ def _safe_snap(snap: Any) -> tuple[Dict[str, float], Dict[str, float]]:
     return _extract_state(snap_pre), _extract_state(snap_post)
 
 
+# input 触发规则的前缀；与 induct_input._generate_input_trigger 的格式对齐。
+_INPUT_PREFIX = "input_"
+
+
+def _index_event_snaps(event_snaps: Any) -> Dict[str, tuple]:
+    """
+    按 input_class（小写）索引事件快照的前后状态，最近一条覆盖在前。
+
+    仅收录 input_class 非空的快照（即真正的「输入事件快照」，带 pre/post
+    精确状态变化），其余（空闲自主拍等）丢弃。无 event_snaps → 返回空 dict，
+    调用方据此完全退回 latest_snap 路径（向后兼容）。
+    """
+    index: Dict[str, tuple] = {}
+    if not event_snaps:
+        return index
+    for s in event_snaps:
+        if isinstance(s, dict):
+            cls = s.get("input_class", "") or ""
+        else:
+            cls = getattr(s, "input_class", "") or ""
+        cls = str(cls).strip().lower()
+        if not cls:
+            continue
+        index[cls] = _safe_snap(s)
+    return index
+
+
+def _class_from_trigger(trigger: Any) -> str:
+    """
+    从 input_{cls}_in_{ctx} 提取 cls（小写）。
+
+    非 input_ 前缀（如 action 规则）→ 返回空串，调用方据此走原 latest_snap 路径。
+    """
+    t = str(trigger or "")
+    if not t.startswith(_INPUT_PREFIX):
+        return ""
+    return t[len(_INPUT_PREFIX):].rsplit("_in_", 1)[0].strip().lower()
+
+
 # ============================================================================
 # 核心逻辑
 # ============================================================================
@@ -90,6 +129,34 @@ def _compute_bayesian_delta(experience_count: int, base_delta: float) -> float:
         return base_delta
 
 
+# 方向兑现的最小幅度阈值（沿用历史值，单字段时与旧逻辑逐位等价）。
+_DIRECTION_EPS = 0.005
+
+
+def _eval_clause(
+    clause: str,
+    snap_pre: Dict[str, float],
+    snap_post: Dict[str, float],
+):
+    """
+    评估单个 "{field}_{direction}" 子句是否被快照兑现。
+
+    返回 1.0（兑现）/ 0.0（未兑现）/ None（无法解析，调用方跳过）。
+    """
+    parts = clause.rsplit("_", 1)
+    if len(parts) != 2:
+        return None
+    field, direction = parts
+    delta_val = snap_post.get(field, 0.0) - snap_pre.get(field, 0.0)
+    # dict 派发取代 if/elif（方向 → 是否兑现）；未知方向 → None。
+    hit = {
+        "increase": delta_val > _DIRECTION_EPS,
+        "decrease": delta_val < -_DIRECTION_EPS,
+        "stable": abs(delta_val) < _DIRECTION_EPS,
+    }.get(direction)
+    return None if hit is None else float(hit)
+
+
 def _verify_single_rule(
     rule: Rule,
     snap_pre: Dict[str, float],
@@ -100,7 +167,11 @@ def _verify_single_rule(
     """
     对单条规律执行验证。
 
-    根据规律的 predicts.expect 解析预期状态变化，与实际快照对比。
+    expect 可能是**多字段合取**，由 induct._generate_expect_from_deltas 用 "+" 连接
+    （如 "info_gap_decrease+unresolved_decrease"）。逐子句评估兑现，取**兑现比例**
+    （连续 [0,1]），再线性映射为带符号置信增量：
+        全兑现 → +max；全未兑现 → -max；部分兑现 → 居中线性（一半兑现 → 0，不动）。
+    单字段时 fraction∈{0,1}，与旧逻辑逐位等价（不改 action 既有数值行为）。
 
     返回 (verified: bool, delta: float)
     """
@@ -109,26 +180,26 @@ def _verify_single_rule(
         if not expect:
             return False, 0.0
 
-        # 解析 expect 格式："{field}_{direction}"
-        parts = expect.rsplit("_", 1)
-        if len(parts) != 2:
+        # 多字段合取拆解；逐子句打分，丢弃无法解析的子句。
+        clauses = [c for c in expect.split("+") if c]
+        scores = [
+            s for s in (
+                _eval_clause(c, snap_pre, snap_post) for c in clauses
+            ) if s is not None
+        ]
+        if not scores:
             return False, 0.0
-        field, direction = parts
 
-        delta_val = snap_post.get(field, 0.0) - snap_pre.get(field, 0.0)
+        # 兑现比例：满足子句占比，连续量，无硬门控。
+        fraction = sum(scores) / len(scores)
+        # 线性映射到带符号信用：2f-1 ∈ [-1, 1]（f=1→+1, f=0→-1, f=0.5→0）。
+        signed = 2.0 * fraction - 1.0
 
-        if direction == "increase":
-            success = delta_val > 0.005
-        elif direction == "decrease":
-            success = delta_val < -0.005
-        else:  # stable
-            success = abs(delta_val) < 0.005
+        magnitude = _compute_bayesian_delta(rule.source_experience_count, base_delta)
+        magnitude = min(abs(magnitude), max_delta)  # 限制单次最大变化量绝对值
+        delta = magnitude * signed
 
-        delta = _compute_bayesian_delta(rule.source_experience_count, base_delta)
-        delta = min(abs(delta), max_delta)  # 限制单次最大变化量绝对值
-        delta = delta if success else -delta
-
-        return success, delta
+        return fraction >= 0.5, delta
 
     except Exception:
         return False, 0.0
@@ -143,6 +214,7 @@ def verify_pending(
     pending: List[Any],
     snap: Any,
     param_snapshot: Any,
+    event_snaps: Any = None,
 ) -> List[Rule]:
     """
     验证模块主入口。
@@ -150,8 +222,13 @@ def verify_pending(
     参数：
         rules          : 当前全部规律列表（active + pending）
         pending        : 待验证的 pending 规律列表
-        snap           : 最新经验快照（Snap 或 dict）
+        snap           : 最新经验快照（Snap 或 dict）— action 规则及无事件匹配时用
         param_snapshot : 参数只读快照（来自 parameter_system）
+        event_snaps    : 本周期全部经验快照列表（含真正的输入事件快照）。
+                         默认 None → 完全退回 snap 单快照行为（向后兼容）。
+                         提供时：input 触发规则按 input_class 匹配对应事件快照
+                         的 pre/post 验证；无匹配 → 本周期跳过、不罚；
+                         action 规则一字不变，仍走 snap（latest_snap）路径。
 
     返回：
         List[Rule] — 更新后的规律列表
@@ -196,6 +273,9 @@ def verify_pending(
         # ---- 快照安全化 ----
         snap_pre, snap_post = _safe_snap(snap)
 
+        # ---- 事件快照按 input_class 索引（空 → 退回 latest_snap，向后兼容）----
+        event_index = _index_event_snaps(event_snaps)
+
         # ---- 规则安全化 ----
         safe_rules = _safe_rules(rules)
         safe_pending = _safe_rules(pending)
@@ -217,9 +297,22 @@ def verify_pending(
                 result_rules.append(rule)
                 continue
 
+            # ---- 证据快照选择 ----
+            # input 触发规则（cls 非空）且本周期有事件索引 → 按 input_class 取对应
+            # 事件快照的 pre/post；无匹配 → 跳过、不罚。其余（action 规则、或
+            # event_index 为空的兼容路径）→ 走 snap（latest_snap）的 pre/post。
+            cls = _class_from_trigger(rule.predicts.trigger)
+            use_event = bool(event_index) and bool(cls)
+            matched = event_index.get(cls) if use_event else None
+            if use_event and matched is None:
+                # 本周期无匹配输入事件 → 本规则跳过、不罚
+                result_rules.append(rule)
+                continue
+            r_pre, r_post = matched if matched is not None else (snap_pre, snap_post)
+
             # 执行验证
             verified, delta = _verify_single_rule(
-                rule, snap_pre, snap_post, base_delta, max_delta
+                rule, r_pre, r_post, base_delta, max_delta
             )
 
             if delta == 0.0:

@@ -534,12 +534,15 @@ def run_language_training_tick(entity: EntityState, snapshot: dict, override_sta
     # compose_sentence 的 connector 留空，避免重复前缀
     _tmpl_idx = -1
     try:
-        from .language_system.sentence_composer import compose_sentence, PATTERNS
+        from .language_system.sentence_composer import (
+            compose_sentence, PATTERNS, _COMPOSE_TEMP_BASE, _COMPOSE_TEMP_BOREDOM_GAIN
+        )
         # 从 QuenchingTracker 获取历史模板效率（含贝叶斯先验）
         _te = {}
         _q_tmp = getattr(entity, "_quenching", None)
         if _q_tmp is not None:
             _te = _q_tmp.get_template_efficiency(seed_count=len(PATTERNS))
+        _compose_temp = _COMPOSE_TEMP_BASE + float(_vr.get("boredom", 0.2)) * _COMPOSE_TEMP_BOREDOM_GAIN
         # 合并 extra_templates：runtime + CxG 构式候选
         _extra = list(getattr(entity, "_runtime_templates", None) or [])
         try:
@@ -565,6 +568,7 @@ def run_language_training_tick(entity: EntityState, snapshot: dict, override_sta
             learned_weights=getattr(entity, "_template_learned_weights", None),
             extra_templates=_extra or None,
             second_anchor=second_candidate,
+            temperature=_compose_temp,
         )
     except Exception:
         _composed = _display if _display else best_candidate or ""

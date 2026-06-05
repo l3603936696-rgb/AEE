@@ -20,10 +20,18 @@ from .registry import (
     TOOL_DEFINITIONS,
     execute_tool_call,
     list_tools,
+    register_tool_definition,
+    reload_tools,
+    get_all_tools,
+    get_dynamic_tools,
 )
 
 __all__ = [
     "TOOL_DEFINITIONS",
     "execute_tool_call",
     "list_tools",
+    "register_tool_definition",
+    "reload_tools",
+    "get_all_tools",
+    "get_dynamic_tools",
 ]

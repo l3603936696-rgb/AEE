@@ -33,6 +33,8 @@ from .protocol import IPCRequest, IPCResponse
 from .tick_engine import TickEngine
 from ..entity_zero_iteration import run_pipeline, get_entity_state
 from ..llm import create_llm_callable
+from ..response_cache import ResponseCache
+from ..response_cache.response_cache import _cache_weight
 
 
 # ============================================================================
@@ -97,8 +99,9 @@ class IPCServer:
     - Windows: TCP Socket (127.0.0.1:8766)
     """
 
-    def __init__(self, tick_engine: TickEngine, llm_callable=None, ipc_port: int = IPC_TCP_PORT) -> None:
+    def __init__(self, tick_engine: TickEngine, shutdown_callback, llm_callable=None, ipc_port: int = IPC_TCP_PORT, response_cache: Optional[ResponseCache] = None) -> None:
         self._tick_engine = tick_engine
+        self._shutdown_callback = shutdown_callback
         self._llm_callable = llm_callable
         self._server_sock: Optional[socket.socket] = None
         self._running = False
@@ -106,6 +109,7 @@ class IPCServer:
         self._is_windows = sys.platform == "win32"
         self._ipc_port = ipc_port
         self._listen_addr = f"127.0.0.1:{ipc_port}" if self._is_windows else str(SOCKET_PATH)
+        self._response_cache = response_cache
 
     def start(self) -> None:
         """启动 IPC 服务器（在后台线程中运行）"""
@@ -258,35 +262,137 @@ class IPCServer:
             return resp.to_json()
 
     def _handle_chat(self, request: IPCRequest) -> dict:
-        """处理对话请求"""
-        text = request.payload.get("text", "")
-        debug = request.payload.get("debug", False)
+        """处理对话请求（含 response pre-warming 快速通道）"""
+        import time as _time
+        _t0 = _time.time()
 
+        text   = request.payload.get("text", "")
+        debug  = request.payload.get("debug", False)
+        # 默认走内生语言路径（锚点/叙事），不依赖 LLM —— 契合"LLM 是拐杖，能不用
+        # 就不用"。调用方显式传 no_llm=false 才退回 LLM 输出（需 DeepSeek 余额）。
+        no_llm = request.payload.get("no_llm", True)
         entity = get_entity_state()
-        result = run_pipeline(
-            raw_input=text,
-            entity_state=entity,
-            debug=debug,
-            llm_callable=self._llm_callable,
-        )
 
-        # 清理 result 中所有不可 JSON 序列化的字段（Episode 等）
-        safe_result = _safe_json_serializable(result)
+        # ---- 表达反馈闭环（模块B+C）：用本次输入结算她之前的自主表达意图 ----
+        # 她之前 daemon tick 说的话是 action，这次输入是 outcome。
+        # 相关回应 → 对应表达 efficiency 真实升高 + 挂账驱动力被满足。
+        # 放在分流之前：无论缓存还是 pipeline 路径，都先结算（独立于本次怎么回答）。
+        try:
+            from ..language_system.expression_feedback import consume_response
+            consume_response(entity, text, entity.tick)
+        except Exception as _fb_err:
+            logger.debug(f"[IPCServer] expression feedback skipped: {_fb_err}")
 
-        # 只返回必要的公开字段，防止响应过大
-        safe_response = safe_result.get("response", {})
-        safe_decision = safe_result.get("decision", {})
-        raw_snapshot = safe_result.get("state_snapshot", {})
-        snapshot = self._clean_state_snapshot(raw_snapshot)
+        # ---- 澄清归属观察（clarification_learning v2）：回答归属到她之前的澄清 ----
+        # 与 consume_response 并列，不影响主流程，不依赖/不改其结算。
+        try:
+            from ..language_system.clarification_learning import observe_reply
+            observe_reply(
+                entity,
+                reply_text=text,
+                now_ts=time.time(),
+                source="ipc_chat",
+                reply_event_id=str(request.id),
+            )
+        except Exception as _ob_err:
+            logger.debug(f"[IPCServer] clarification observe skipped: {_ob_err}")
 
-        return {
-            "response": safe_response,
-            "decision": safe_decision,
-            "state_snapshot": snapshot,
-            "tick": safe_result.get("tick", entity.tick),
-            "total_ms": safe_result.get("total_ms", 0),
-            "trace": safe_result.get("trace", []) if debug else [],
-        }
+        # ---- Cheap drive-vector probe (no LLM, pure math) ----
+        _cached_text, _cache_sim = None, 0.0
+        try:
+            from ..drive_system.drive_system import compute_drive_vector
+            from ..pipeline_runner.utils import get_default_drive_params
+            _snap = entity.to_state_snapshot()
+            _drive_params = {
+                "curiosity_param":      _snap.get("curiosity_param", 1.0),
+                "max_info_gap_hours":   _snap.get("max_info_gap_hours", 24.0),
+                "max_social_gap_hours": _snap.get("max_social_gap_hours", 24.0),
+                **get_default_drive_params(),
+            }
+            _query_dv = compute_drive_vector(_snap, _drive_params)
+            _cache = self._response_cache
+            has_cache = min(1.0, float(_cache is not None and _cache.size() > 0))
+            noop_w    = 1.0 - has_cache
+            _cached_text, _cache_sim = max(
+                {
+                    "probe": (has_cache, lambda: _cache.match(_query_dv)),
+                    "noop":  (noop_w,    lambda: (None, 0.0)),
+                }.items(),
+                key=lambda kv: kv[1][0],
+            )[1][1]()
+        except Exception as _e:
+            logger.debug(f"[IPCServer] cache probe failed: {_e}")
+
+        # ---- Strategy dispatch: cache vs full pipeline ----
+        # A cached autonomous utterance has no semantic relationship to a new
+        # chat message. Keep pre-warming for empty probes, but let real input
+        # reach the understanding and clarification path.
+        _input_gate = min(1.0, float(len(str(text or ""))))
+        cache_score    = _cache_weight(_cache_sim, threshold=0.90, steepness=20.0) * (1.0 - _input_gate)
+        pipeline_score = 1.0 - cache_score
+
+        def _serve_cache() -> dict:
+            _ms = round((_time.time() - _t0) * 1000)
+            logger.info(
+                f"[IPCServer] cache hit sim={_cache_sim:.3f} weight={cache_score:.3f} {_ms}ms"
+            )
+            return {
+                "response":       {"text": _cached_text, "confidence": _cache_sim,
+                                   "generation_time_ms": _ms},
+                "decision":       {},
+                "state_snapshot": self._clean_state_snapshot(entity.to_state_snapshot()),
+                "tick":           entity.tick,
+                "total_ms":       _ms,
+                "trace":          [],
+            }
+
+        def _serve_pipeline() -> dict:
+            result = run_pipeline(
+                raw_input=text,
+                entity_state=entity,
+                debug=debug,
+                llm_callable=self._llm_callable,
+                no_llm=no_llm,
+            )
+            safe = _safe_json_serializable(result)
+            return {
+                "response":             safe.get("response", {}),
+                "decision":             safe.get("decision", {}),
+                "state_snapshot":       self._clean_state_snapshot(safe.get("state_snapshot", {})),
+                "tick":                 safe.get("tick", entity.tick),
+                "total_ms":             safe.get("total_ms", 0),
+                "trace":                safe.get("trace", []) if debug else [],
+                "cx_recognized_words":  safe.get("cx_recognized_words", []),
+                "cx_social_intent":     safe.get("cx_social_intent", "unknown"),
+            }
+
+        _response = max(
+            {
+                "cache":    (cache_score,    _serve_cache),
+                "pipeline": (pipeline_score, _serve_pipeline),
+            }.items(),
+            key=lambda kv: kv[1][0],
+        )[1][1]()
+
+        # ---- 他者建模：更新外部用户 profile（cache 和 pipeline 路径均触发）----
+        try:
+            from ..language_system.source_profiler import update_profile
+            _obs = entity._causal_observations
+            _last_delta = _obs[-1]["delta"] if _obs else {}
+            update_profile(
+                entity,
+                "external",
+                _response.get("cx_recognized_words", []),
+                _response.get("cx_social_intent", "unknown"),
+                _last_delta,
+                entity.tick,
+            )
+            # cache 路径不触发 pipeline persist，需显式落盘（用默认路径）
+            entity.persist_to_file()
+        except Exception as _sp_err:
+            logger.warning(f"[SourceProfiler] external update skipped: {_sp_err}")
+
+        return _response
 
     def _clean_state_snapshot(self, raw: dict) -> dict:
         """
@@ -321,15 +427,30 @@ class IPCServer:
 
     def _trigger_shutdown(self) -> None:
         """触发 daemon 关闭"""
-        time.sleep(0.5)
-        self._tick_engine.stop()
-        self.stop()
-        logger.info("[Daemon] shutdown complete")
+        self._shutdown_callback()
+
+    def _save_shutdown_event(self) -> None:
+        """保存关机断档：时间戳 + 状态快照，供开机时计算离线漂移"""
+        try:
+            entity = self._tick_engine.entity
+            if entity is None:
+                logger.warning("[ShutdownEvent] No entity found, skipping")
+                return
+            entity.last_shutdown_time = time.time()
+            entity.last_shutdown_tick = entity.tick
+            entity.persist_to_file()
+            logger.info(f"[ShutdownEvent] Saved shutdown at tick={entity.tick}, time={entity.last_shutdown_time}")
+        except Exception as e:
+            logger.warning(f"[ShutdownEvent] Failed to save shutdown event: {e}")
 
 
 # ============================================================================
 # HTTP API 服务器 (Windows 兼容)
 # ============================================================================
+
+HTTP_REQUEST_POLL_INTERVAL_S = 0.5
+HTTP_STOP_JOIN_TIMEOUT_S = 1.0
+
 
 class HTTPServer:
     """
@@ -500,6 +621,7 @@ class HTTPServer:
 
         self._socketserver.TCPServer.allow_reuse_address = True
         self._httpd = self._socketserver.TCPServer(('127.0.0.1', self._port), self._Handler)
+        self._httpd.timeout = HTTP_REQUEST_POLL_INTERVAL_S
         self._running = True
 
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -515,7 +637,8 @@ class HTTPServer:
         """停止 HTTP 服务器"""
         self._running = False
         try:
-            self._httpd.shutdown()
+            self._thread.join(timeout=HTTP_STOP_JOIN_TIMEOUT_S)
+            self._httpd.server_close()
         except Exception:
             pass
 
@@ -559,8 +682,10 @@ def run_daemon(tick_interval: float = 30.0, http_port: int = 8765, ipc_port: int
     llm_callable = create_llm_callable()
 
     # 初始化组件
-    ipc_server = IPCServer(tick_engine=None, llm_callable=llm_callable, ipc_port=ipc_port)
-    tick_engine = TickEngine(tick_interval=tick_interval, entity_state=entity, ipc_server=ipc_server, llm_callable=llm_callable, train_only=train_only)
+    shutdown_requested = threading.Event()
+    response_cache = ResponseCache(capacity=3)
+    ipc_server = IPCServer(tick_engine=None, shutdown_callback=shutdown_requested.set, llm_callable=llm_callable, ipc_port=ipc_port, response_cache=response_cache)
+    tick_engine = TickEngine(tick_interval=tick_interval, entity_state=entity, ipc_server=ipc_server, llm_callable=llm_callable, train_only=train_only, response_cache=response_cache)
     ipc_server._tick_engine = tick_engine
 
     # 启动 IPC 服务器
@@ -576,8 +701,6 @@ def run_daemon(tick_interval: float = 30.0, http_port: int = 8765, ipc_port: int
     tick_engine.start()
 
     # 注册信号处理
-    shutdown_requested = threading.Event()
-
     def handle_signal(signum, frame):
         sig_name = signal.Signals(signum).name
         logger.info(f"Received {sig_name}, initiating shutdown...")
@@ -596,6 +719,14 @@ def run_daemon(tick_interval: float = 30.0, http_port: int = 8765, ipc_port: int
             shutdown_requested.wait(timeout=5)
     finally:
         logger.info("Shutting down...")
+        # 保存关机断档
+        try:
+            entity.last_shutdown_time = time.time()
+            entity.last_shutdown_tick = entity.tick
+            entity.persist_to_file()
+            logger.info(f"[ShutdownEvent] Saved shutdown at tick={entity.tick}")
+        except Exception as e:
+            logger.warning(f"[ShutdownEvent] Failed: {e}")
         tick_engine.stop()
         http_server.stop()
         ipc_server.stop()

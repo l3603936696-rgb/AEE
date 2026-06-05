@@ -451,7 +451,9 @@ def update_state(
             fatigue_delta = -0.02 * metabolic_seconds / 60.0
         else:
             fatigue_delta = 0.0
-        new_fatigue = _clamp(fatigue_base + fatigue_delta)
+        # 自然恢复：无论行为类型，始终以极慢速度衰减（homeostatic floor）
+        _fatigue_passive = _param(param_snapshot, "fatigue.passive_decay", 0.003) * metabolic_seconds / 60.0
+        new_fatigue = _clamp(fatigue_base + fatigue_delta - _fatigue_passive)
     except Exception:
         new_fatigue = current_fatigue
 

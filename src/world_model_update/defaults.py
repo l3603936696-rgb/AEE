@@ -33,6 +33,12 @@ DEFAULT_PARAMS: Dict[str, Any] = {
     # ----- 预测误差驱动学习（v11.2）-----
     "world_model.prediction_error_threshold": 0.02,
     "world_model.prediction_ema_alpha": 0.3,
+    # expected_deltas 显著性剪枝比例：只保留 |delta| >= ratio × max|delta| 的字段，
+    # 砍掉跟随主字段小幅晃动的长尾。防止 expected_deltas 只进不出地累积成
+    # 十几字段的合取（这类超定预测永远无法被验证兑现 → 必然衰减到地板）。
+    # 0.3 复用 thinking_system._active_dimensions 判定「主导维度」的同一比例，
+    # 非新发明常数。
+    "world_model.induction_salience_ratio": 0.3,
 
     # ----- 验证 (Verification) -----
     "world_model.verification_base_delta": 0.08,

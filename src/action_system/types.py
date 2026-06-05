@@ -71,6 +71,10 @@ class FailureRecord:
     attempted_fix: str = ""      # 她尝试了什么修复（如 "pip install requests"）
     fix_result: str = ""         # 修复结果（"success" / "failed" / "" 表示未尝试）
     fix_error: str = ""          # 修复过程中的新错误
+    # 意图与能力缺口（v11.6 tool_introspection）
+    intended_action: str = ""    # 她当时想做什么（从 intent_analyzer 推断）
+    missing_capability: str = "" # 她推断自己缺失的能力类型
+    intent_confidence: float = 0.0  # 意图推断的置信度 [0, 1]
 
     def to_dict(self) -> dict:
         return {
@@ -83,6 +87,9 @@ class FailureRecord:
             "attempted_fix": self.attempted_fix,
             "fix_result": self.fix_result,
             "fix_error": self.fix_error,
+            "intended_action": self.intended_action,
+            "missing_capability": self.missing_capability,
+            "intent_confidence": self.intent_confidence,
         }
 
     def to_summary(self) -> str:
@@ -91,6 +98,10 @@ class FailureRecord:
         if self.command_or_input:
             parts.append(f"  输入: {self.command_or_input[:80]}")
         parts.append(f"  原因: {self.error_message[:120]}")
+        if self.intended_action:
+            parts.append(f"  想做: {self.intended_action}（置信度 {self.intent_confidence:.2f}）")
+        if self.missing_capability:
+            parts.append(f"  缺: {self.missing_capability}")
         if self.attempted_fix:
             status = "✅ 修复成功" if self.fix_result == "success" else "❌ 修复失败"
             parts.append(f"  尝试修复: {self.attempted_fix} → {status}")

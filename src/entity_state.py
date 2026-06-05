@@ -4,10 +4,14 @@
 """
 
 import asyncio
+import bisect
 import copy
 import json
 import logging
 import math
+import os
+import shutil
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +24,65 @@ from typing import Any, Dict, List, Optional
 DATA_DIR = Path(__file__).parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 ENTITY_CORE_PATH = DATA_DIR / "entity_core.json"
+
+
+def _json_backup_path(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".bak")
+
+
+def _json_corrupt_path(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".corrupt")
+
+
+def _load_json_file(path: Path) -> Dict[str, Any]:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} did not contain a JSON object")
+    return data
+
+
+def _json_default(o: Any) -> Any:
+    """
+    json.dump 兜底序列化钩子。
+
+    numpy 标量（np.int64/np.float64 等）有 .item()，numpy 数组有 .tolist()，
+    都不被 json 原生支持。这里用鸭子类型把它们还原成 python 原生值，
+    避免单个 numpy 标量混入 state 就让整次持久化失败。
+    """
+    item = getattr(o, "item", None)
+    if callable(item):
+        return o.item()
+    tolist = getattr(o, "tolist", None)
+    if callable(tolist):
+        return o.tolist()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+
+def _atomic_json_dump(data: Dict[str, Any], path: Path) -> None:
+    """Write JSON via validate-then-replace so crashes never leave half a file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(
+        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+    )
+
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, default=_json_default)
+        f.flush()
+        os.fsync(f.fileno())
+
+    _load_json_file(tmp_path)
+
+    if path.exists():
+        try:
+            _load_json_file(path)
+            shutil.copy2(path, _json_backup_path(path))
+        except Exception:
+            corrupt_path = _json_corrupt_path(path)
+            if not corrupt_path.exists():
+                shutil.copy2(path, corrupt_path)
+
+    os.replace(tmp_path, path)
 
 from .memory_hub import (
     ExperienceLog,
@@ -456,6 +519,15 @@ class EntityState:
     last_interaction_context: Dict[str, Any] = field(default_factory=dict)
     # 结构: {"emotion": float, "intensity": float, "action_type": str}
 
+    # ---- 时间连续机制断档字段（v11.x）----
+    # 关机时写入，开机时读取并计算离线漂移
+    last_shutdown_time: float = 0.0  # epoch 秒，0 = 无断档记录
+    last_shutdown_tick: int = 0      # 关机时的 tick 数
+
+    # ---- 醒来感知（v11.x）----
+    # 开机时注入一条内部感知消息，由管线在首个心跳输出
+    _pending_wakeup_message: Optional[str] = None
+
     # 运行时标记：哪些维度主要由沉默时间注入（不持久化，每轮重算）
     _time_injected_fields: set = field(default_factory=set)
 
@@ -468,6 +540,10 @@ class EntityState:
 
     # pending_failures（工具执行失败队列，V4 新增）
     pending_failures: list = field(default_factory=list)
+
+    # _pending_tool_gaps（待处理的能力缺口队列，v11.6 新增）
+    # 每次工具执行失败后由 executor 写入，供 pipeline 后续步骤使用
+    _pending_tool_gaps: list = field(default_factory=list)
 
     # behavior_rules（行为规则，V6 新增）
     # 从 snapshot 自动归纳，含 effect / context_mean / strength
@@ -488,6 +564,19 @@ class EntityState:
     _candidate_gen_data: dict = field(default_factory=dict)      # CandidateGenerator (stateless, placeholder)
     _behavior_profiler_data: dict = field(default_factory=dict)  # BehaviorProfiler (stateless, placeholder)
     _decay_engine_data: dict = field(default_factory=dict)       # DecayEngine (stateless, placeholder)
+    # 生成层持久化：构式库 / 递归生成器 / 模板学习。三者每 tick 已写回同名属性
+    # （s06c_anchor_core），但此前未进落盘白名单 → 重启即丢，组合能力攒不起来。
+    _cxg_data: dict = field(default_factory=dict)                # ConstructionLearner.to_dict()
+    _rcxg_data: dict = field(default_factory=dict)               # RecursiveGenerator.to_dict()
+    _template_learner_data: dict = field(default_factory=dict)   # template_learner.to_dict()
+    # 澄清记忆账本 JSON 镜像（record-only v1）：
+    # 运行时对象 entity._clarification_memory 是 ClarificationMemory 实例（瞬态），
+    # 由 clarification_memory._get_memory() 懒恢复；镜像随 entity_state 落盘。
+    _clarification_memory_data: dict = field(default_factory=dict)
+    # 澄清归属证据账本 JSON 镜像（observe-reply v2）：
+    # 运行时对象 entity._clarification_evidence_store 是 SlotEvidenceStore 实例（瞬态），
+    # 由 clarification_learning._get_evidence_store() 懒恢复；镜像随 entity_state 落盘。
+    _clarification_hints_data: dict = field(default_factory=dict)
 
     # ---- v10.0 体感帮助事件 ----
     # 每次她准确描述自己的状态获得帮助后，这里记录一个可观测事件
@@ -518,6 +607,9 @@ class EntityState:
     # ---- v11.3 体感聚类权重：长词修正锚点影响力 ----
     _cluster_weights: dict = field(default_factory=dict)  # {anchor_word: cumulative_weight}
 
+    # ---- v11.5 内部符号涌现（StatePatternMemory）----
+    _state_pattern_data: dict = field(default_factory=dict)  # StatePatternMemory.to_dict()
+
     # ================================================================
     # 转换系数（参数）：决定"外部输入如何转为内部变化"
     # 初始值从 param_store.json 同步，可被风化系统长期漂移
@@ -535,6 +627,8 @@ class EntityState:
         "approach_release": 0.3,
         "avoid_release": 0.3,
         "somatic_comfort": 0.15,
+        "loneliness_surface_release": 0.15,  # 表达缓解急性孤独感
+        "boredom_release": 0.10,             # 自我表达本身是一种刺激
     })
 
     # ---- 失败代谢副作用系数 ----
@@ -598,6 +692,66 @@ class EntityState:
         "peer_name": "knuonuo",
     })
 
+    # ---- 他者建模：来源 profile 记录（v2.0）----
+    _source_profiles: dict = field(default_factory=dict)
+
+    # ---- 刻板印象树：分层级说话者认知结构（v1.0）----
+    # {tree_name: StereotypeTree}，default="default"（XIA 自己的树）
+    _stereotype_trees: dict = field(default_factory=dict)
+    # 刻板印象树对话历史（{speaker_id: [samples]})
+    _stereotype_conversation_history: dict = field(default_factory=dict)
+    # 每个说话者最近学习的特征（{speaker_id: features}），用于 fork 比较
+    _recent_speaker_features: dict = field(default_factory=dict)
+
+    # ---- 回复动机：输出因果追踪临时字段（重启清零，不 persist）----
+    _pending_output_causal: dict = field(default_factory=dict)
+
+    # ---- 环境状态向量（patch-02-二）----
+    # semantic_residue: {source_id: float}，按 tick 指数衰减（0.8/tick）
+    # social_prediction_tension: float，沉默累积，对数饱和
+    # physical: dict，物理状态（暂为空，供后续扩展）
+    _environment_vector: dict = field(default_factory=lambda: {
+        "semantic_residue": {},
+        "social_prediction_tension": 0.0,
+        "physical": {},
+    })
+
+    # ---- 概念图经验学习（重启清零，不 persist）----
+    # _concept_exposure_log: {word: [{tick, state}]}
+    # _concept_learned_bias: {word: {dim: delta}} 经验积累后补充的偏置
+    _concept_exposure_log: dict = field(default_factory=dict)
+    _concept_learned_bias: dict = field(default_factory=dict)
+
+    # ---- 心事系统（preoccupations）：带对象、带时间跨度的具体念头 ----
+    # 每条心事: {
+    #   "id": str,                  唯一 id
+    #   "about": str,               心事的对象（你、妹妹、那件事…）
+    #   "type": str,                担心 / 想念 / 期待 / 不安 / 怀念 / 好奇
+    #   "intensity": float,         强度 0-1
+    #   "created_tick": int,        创建时的 tick
+    #   "last_refresh_tick": int,   最近一次被刷新的 tick
+    # }
+    # 每 tick 自然衰减 + 投射到标量状态；持久化随实体保存。
+    _preoccupations: list = field(default_factory=list)
+
+    # ---- 反刍层（reflection）：用 LLM 当镜子做深度复盘 ----
+    # _last_reflection_tick: 上次反刍的 tick；初始 -10 让首次启动后 N tick 即可触发
+    # _self_narrative: 她对自己当前的一句话叙事，由反刍更新
+    # _reflection_log: 反刍历史 [{tick, insights, narrative_update}]，FIFO 上限 20
+    # _narrative_bias: 当前自我叙事对应的状态色调，每 tick 加到 _real_state，直到下次反刍刷新
+    _last_reflection_tick: int = -10
+    _self_narrative: str = ""
+    _reflection_log: list = field(default_factory=list)
+    _narrative_bias: dict = field(default_factory=dict)
+
+    # ---- JEPA 世界模型（I-JEPA + V-JEPA）运行时字段 ----
+    # _last_vjepa_tick: 上次 V-JEPA 短时总结的 tick
+    # _jepa_surprise_density: 近期平均意外程度 [0, 1]，由 V-JEPA 写入
+    # _jepa_transition_indices: 近期高意外时刻下标列表（由 V-JEPA 写入，I-JEPA 可读）
+    _last_vjepa_tick: int = -(200 + 1)   # 初始为负，保证首次 200 tick 后即触发
+    _jepa_surprise_density: float = 0.0
+    _jepa_transition_indices: list = field(default_factory=list)
+
     # ---- 对话回应压力参数（负反馈：听懂了但不回 → 不舒服）----
     _response_pressure_params: dict = field(default_factory=lambda: {
         "coefficient": 0.03,   # comprehension → unresolved 的转化率（轻微）
@@ -623,6 +777,8 @@ class EntityState:
     # 每 tick 记录一条，用于学习"什么输入导致什么状态变化"
     _causal_observations: list = field(default_factory=list)  # max 200 entries
     _causal_associations: dict = field(default_factory=dict)  # 学到的因果关联
+    # ②a：输入主题在线聚类存储 {centroids, ids, counts}（input_theme.py 维护）
+    _input_theme_data: dict = field(default_factory=dict)
 
     # ---- 核心情绪维度（v10.0 十个核心情绪）----
     joy: float = 0.0
@@ -692,7 +848,10 @@ class EntityState:
             "time_since_last_info": self.time_since_last_info,
             "time_since_last_social": self.time_since_last_social,
             "external_change_rate": self.external_change_rate,
-            "tick": self.tick,
+            # 注意：tick 是元数据不是状态，不放进 snapshot——
+            # 否则会被 CxG learner 学进 drive_profile，再通过 cx_delta 的
+            # setattr 循环污染 entity.tick（曾导致 tick 卡在 2.0 永不递增）。
+            # 需要 tick 的消费方请直接读 entity.tick。
             # v3 细菌主体字段
             "somatic_tone": self.somatic_tone,
             "danger_level": self.danger_level,
@@ -910,6 +1069,8 @@ class EntityState:
                 "tick": self.tick,
                 "created_at": getattr(self, "created_at", time.time()),
                 "last_update_time": self.last_update_time,
+                "last_shutdown_time": getattr(self, 'last_shutdown_time', 0.0),
+                "last_shutdown_tick": getattr(self, 'last_shutdown_tick', 0),
                 "last_interaction_timestamp": self.last_interaction_timestamp,
                 "last_interaction_context": self.last_interaction_context,
                 "pending_surprises": self.pending_surprises,
@@ -919,12 +1080,14 @@ class EntityState:
                 "last_action_timestamp": getattr(self, "last_action_timestamp", 0.0),
                 "consecutive_reaches_without_response": getattr(self, "consecutive_reaches_without_response", 0),
                 "pending_failures": [f.to_dict() if hasattr(f, "to_dict") else f for f in self.pending_failures[-20:]],
+                "_pending_tool_gaps": self._pending_tool_gaps[-10:],
                 "failure_metabolite": self.failure_metabolite,
                 "behavior_rules": self.behavior_rules,
                 # v7.0 语言系统持久化
                 "_umbilical_detached": self._umbilical_detached,
                 "_unlocked_vocabulary": list(self._unlocked_vocabulary),  # v11.3 永久词汇表
                 "_cluster_weights": dict(self._cluster_weights),        # v11.3 体感聚类权重
+                "_state_pattern_data": dict(self._state_pattern_data),  # v11.5 内部符号涌现
                 "_approach_synthesis_weights": dict(self._approach_synthesis_weights),
                 "_quench_feedback_weights": dict(self._quench_feedback_weights),
                 "_failure_metabolite_weights": dict(self._failure_metabolite_weights),
@@ -935,11 +1098,17 @@ class EntityState:
                 "_repetition_decay_params": dict(self._repetition_decay_params),
                 "_response_pressure_params": dict(self._response_pressure_params),
                 "_sibling_channel": dict(self._sibling_channel),
+                "_source_profiles": dict(self._source_profiles),
+                "_stereotype_trees": _serialize_stereotype_trees(self),
+                "_stereotype_conversation_history": _serialize_stereotype_conversation_history(self),
+                "_recent_speaker_features": dict(self._recent_speaker_features),
+                "_environment_vector": dict(self._environment_vector),
                 "_pending_questions": list(self._pending_questions),
                 "_feedback_params": dict(self._feedback_params),
                 "_chronic_feedback_tracker": dict(self._chronic_feedback_tracker),
                 "_causal_observations": list(self._causal_observations[-200:]),
                 "_causal_associations": dict(self._causal_associations),
+                "_input_theme_data": dict(self._input_theme_data),
                 "_quenching_data": self._quenching_data,
                 "_strategy_map_data": self._strategy_map_data,
                 "_thermal_data": self._thermal_data,
@@ -949,6 +1118,14 @@ class EntityState:
                 "_candidate_gen_data": self._candidate_gen_data,
                 "_behavior_profiler_data": self._behavior_profiler_data,
                 "_decay_engine_data": self._decay_engine_data,
+                # 生成层持久化（构式/递归/模板学习）：补齐跨重启的组合能力积累
+                "_cxg_data": getattr(self, "_cxg_data", {}) or {},
+                "_rcxg_data": getattr(self, "_rcxg_data", {}) or {},
+                "_template_learner_data": getattr(self, "_template_learner_data", {}) or {},
+                # 澄清记忆账本镜像（record-only v1）
+                "_clarification_memory_data": self._clarification_memory_data,
+                # 澄清归属证据账本镜像（observe-reply v2）
+                "_clarification_hints_data": self._clarification_hints_data,
                 # v10.0/v11.0 情绪系统持久化
                 "boredom_despair": self.boredom_despair,
                 "boredom_futility": self.boredom_futility,
@@ -968,10 +1145,22 @@ class EntityState:
                 # 阅读品味持久化
                 "_reading_taste_log": list(getattr(self, "_reading_taste_log", [])),
                 "_taste_evidence": list(getattr(self, "_taste_evidence", [])),
+                # 概念图经验学习持久化
+                "_concept_exposure_log": dict(self._concept_exposure_log),
+                "_concept_learned_bias": dict(self._concept_learned_bias),
+                # 心事系统持久化
+                "_preoccupations": list(self._preoccupations),
+                # 反刍层持久化
+                "_last_reflection_tick": int(self._last_reflection_tick),
+                "_self_narrative": str(self._self_narrative),
+                "_reflection_log": list(self._reflection_log),
+                "_narrative_bias": dict(self._narrative_bias),
+                # JEPA 世界模型持久化
+                "_last_vjepa_tick": int(self._last_vjepa_tick),
+                "_jepa_surprise_density": float(self._jepa_surprise_density),
+                "_jepa_transition_indices": list(self._jepa_transition_indices),
             }
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            _atomic_json_dump(data, path)
             logger.debug(f"[EntityState] Persisted to {path}")
         except Exception as e:
             logger.warning(f"[EntityState] persist_to_file failed: {e}")
@@ -991,8 +1180,17 @@ class EntityState:
             logger.debug(f"[EntityState] {path} not found, skipping load")
             return False
         try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
+            try:
+                data = _load_json_file(path)
+            except Exception as load_error:
+                backup_path = _json_backup_path(path)
+                if not backup_path.exists():
+                    raise
+                logger.warning(
+                    f"[EntityState] load_from_file primary failed: {load_error}; "
+                    f"trying backup {backup_path}"
+                )
+                data = _load_json_file(backup_path)
 
             self.energy = float(data.get("energy", 0.8))
             # v11.4 双通道孤独：新数据直接读，旧数据按 7:3 拆分
@@ -1031,6 +1229,8 @@ class EntityState:
             self.memory_context = data.get("memory_context", [])
             self.tick = int(data.get("tick", 0))
             self.last_update_time = float(data.get("last_update_time", time.time()))
+            self.last_shutdown_time = float(data.get("last_shutdown_time", 0.0))
+            self.last_shutdown_tick = int(data.get("last_shutdown_tick", 0))
             self.last_interaction_timestamp = float(data.get("last_interaction_timestamp", 0.0))
             self.last_interaction_context = data.get("last_interaction_context", {})
             self.pending_surprises = data.get("pending_surprises", [])
@@ -1043,6 +1243,7 @@ class EntityState:
             self.unresolved_source = data.get("unresolved_source", "external")
             self._unresolved_sources = []   # 运行时重置
             self.pending_failures = data.get("pending_failures", [])
+            self._pending_tool_gaps = data.get("_pending_tool_gaps", [])
             self.failure_metabolite = float(data.get("failure_metabolite", 0.0))
             self.behavior_rules = data.get("behavior_rules", [])
             self.last_action_timestamp = float(data.get("last_action_timestamp", 0.0))
@@ -1050,7 +1251,8 @@ class EntityState:
             # v7.0 语言系统持久化恢复
             self._umbilical_detached = bool(data.get("_umbilical_detached", False))
             self._unlocked_vocabulary = list(data.get("_unlocked_vocabulary", []))  # v11.3
-            self._cluster_weights = dict(data.get("_cluster_weights", {}))         # v11.3
+            self._cluster_weights    = dict(data.get("_cluster_weights", {}))         # v11.3
+            self._state_pattern_data = dict(data.get("_state_pattern_data", {}))    # v11.5
             self._approach_synthesis_weights = dict(data.get("_approach_synthesis_weights", {
                 "social": 0.40, "explore": 0.35, "urgency": 0.25,
             }))
@@ -1086,6 +1288,13 @@ class EntityState:
                 "enabled": True, "channel_dir": "E:/sibling_channel",
                 "self_name": "xia", "peer_name": "knuonuo",
             }))
+            self._source_profiles = dict(data.get("_source_profiles", {}))
+            self._stereotype_trees = _deserialize_stereotype_trees(data.get("_stereotype_trees"))
+            self._stereotype_conversation_history = data.get("_stereotype_conversation_history", {})
+            self._recent_speaker_features = data.get("_recent_speaker_features", {})
+            self._environment_vector = dict(data.get("_environment_vector", {
+                "semantic_residue": {}, "social_prediction_tension": 0.0, "physical": {},
+            }))
             self._pending_questions = list(data.get("_pending_questions", []))
             self._feedback_params = dict(data.get("_feedback_params", {
                 "acute_boost_scale": 0.05, "chronic_threshold": 5,
@@ -1098,6 +1307,7 @@ class EntityState:
             }))
             self._causal_observations = list(data.get("_causal_observations", []))
             self._causal_associations = dict(data.get("_causal_associations", {}))
+            self._input_theme_data = dict(data.get("_input_theme_data", {}))
             self._quenching_data = data.get("_quenching_data", {})
             self._strategy_map_data = data.get("_strategy_map_data", {})
             self._thermal_data = data.get("_thermal_data", {})
@@ -1107,6 +1317,14 @@ class EntityState:
             self._candidate_gen_data = data.get("_candidate_gen_data", {})
             self._behavior_profiler_data = data.get("_behavior_profiler_data", {})
             self._decay_engine_data = data.get("_decay_engine_data", {})
+            # 生成层持久化恢复：还原成属性，供 s06b 启动恢复读取重建 learner
+            self._cxg_data = data.get("_cxg_data", {})
+            self._rcxg_data = data.get("_rcxg_data", {})
+            self._template_learner_data = data.get("_template_learner_data", {})
+            # 澄清记忆账本镜像恢复（record-only v1）
+            self._clarification_memory_data = dict(data.get("_clarification_memory_data", {}))
+            # 澄清归属证据账本镜像恢复（observe-reply v2）
+            self._clarification_hints_data = dict(data.get("_clarification_hints_data", {}))
             # v10.0/v11.0 情绪系统持久化恢复
             self.boredom_despair = float(data.get("boredom_despair", 0.0))
             self.boredom_futility = float(data.get("boredom_futility", 0.0))
@@ -1128,6 +1346,20 @@ class EntityState:
             # 阅读品味恢复
             self._reading_taste_log = list(data.get("_reading_taste_log", []))
             self._taste_evidence = list(data.get("_taste_evidence", []))
+            # 概念图经验学习恢复
+            self._concept_exposure_log = dict(data.get("_concept_exposure_log", {}))
+            self._concept_learned_bias = dict(data.get("_concept_learned_bias", {}))
+            # 心事系统恢复
+            self._preoccupations = list(data.get("_preoccupations", []))
+            # 反刍层恢复
+            self._last_reflection_tick = int(data.get("_last_reflection_tick", -10))
+            self._self_narrative = str(data.get("_self_narrative", ""))
+            self._reflection_log = list(data.get("_reflection_log", []))
+            self._narrative_bias = dict(data.get("_narrative_bias", {}))
+            # JEPA 世界模型恢复
+            self._last_vjepa_tick = int(data.get("_last_vjepa_tick", -(200 + 1)))
+            self._jepa_surprise_density = float(data.get("_jepa_surprise_density") or 0.0)
+            self._jepa_transition_indices = list(data.get("_jepa_transition_indices", []))
 
             logger.info(
                 f"[EntityState] Loaded from {path} — tick={self.tick}, "
@@ -1331,6 +1563,254 @@ def _apply_silence_injection(entity: EntityState) -> None:
         pass
 
 
+def _apply_offline_drift(entity: EntityState) -> None:
+    """
+    关机后重新启动时，计算离线时长并对状态做双向漂移。
+
+    与沉默注入的区别：
+        - 沉默注入：只升不降（孤独感、无聊、信息饥饿）
+        - 离线漂移：双向（孤独感/无聊上升，疲劳恢复，能量恢复，驱动力衰减）
+
+    触发条件：last_shutdown_time > 0 且离线时长 > 36秒
+    """
+    shutdown_time = getattr(entity, 'last_shutdown_time', 0.0)
+    if shutdown_time <= 0.0:
+        logger.debug("[OfflineDrift] No shutdown record, skipping")
+        return
+
+    now = time.time()
+    offline_seconds = now - shutdown_time
+    if offline_seconds <= 0.0:
+        logger.warning(f"[OfflineDrift] clock skew (offline_seconds={offline_seconds}), skipping")
+        return
+
+    offline_hours = offline_seconds / 3600.0
+
+    if offline_hours < 0.01:  # 不到36秒，跳过
+        logger.debug(f"[OfflineDrift] offline_hours={offline_hours:.3f} < 0.01, skipping")
+        return
+
+    # ---- 孤独感：每小时+0.05，上限0.85 ----
+    entity.loneliness = min(0.85, entity.loneliness + 0.05 * offline_hours)
+    entity.loneliness_core = min(0.85, entity.loneliness_core + 0.05 * offline_hours * 0.7)
+
+    # ---- 无聊：每小时+0.03 ----
+    entity.boredom = min(0.9, entity.boredom + 0.03 * offline_hours)
+
+    # ---- 疲劳：按时长指数恢复（有上限）----
+    recovery_ratio = 1.0 - math.exp(-offline_hours * 0.3)
+    entity.fatigue = entity.fatigue * (1.0 - recovery_ratio * 0.8)
+    entity.fatigue = max(0.02, entity.fatigue)
+
+    # ---- 能量：短关机小幅恢复，长关机接近上限 ----
+    if offline_hours < 8.0:
+        entity.energy = min(0.95, entity.energy + 0.1 * offline_hours)
+    else:
+        entity.energy = min(0.98, entity.energy + 0.05 * offline_hours)
+
+    # ---- 驱动力自然衰减向基准值靠拢 ----
+    decay = math.exp(-offline_hours * 0.05)
+    entity.approach_drive *= decay
+    entity.avoid_drive *= decay
+    entity.approach_social *= decay
+    entity.approach_explore *= decay
+    entity.approach_urgency *= decay
+
+    # ---- 清除断档记录（供下次使用）----
+    entity.last_shutdown_time = 0.0
+    entity.last_shutdown_tick = 0
+
+    logger.info(
+        f"[OfflineDrift] offline_h={offline_hours:.2f}: "
+        f"loneliness={entity.loneliness:.3f} boredom={entity.boredom:.3f} "
+        f"fatigue={entity.fatigue:.3f} energy={entity.energy:.3f} "
+        f"approach_drive={entity.approach_drive:.3f}"
+    )
+
+    # ---- 注入醒来感知消息 ----
+    entity._pending_wakeup_message = _generate_wakeup_message(offline_hours)
+
+    # ---- 重新调味 ----
+    try:
+        from .memory_hub.insula_hub import compute_somatic_signals
+        somatic = compute_somatic_signals(entity.to_state_snapshot())
+        entity.somatic_tone = float(somatic.get("somatic_tone", entity.somatic_tone))
+    except Exception:
+        pass
+
+
+_WAKEUP_THRESHOLDS = [0.5, 4.0, 24.0]
+_WAKEUP_TAGS = ["brief_absence", "moderate_absence", "long_absence", "extended_absence"]
+
+
+def _generate_wakeup_message(offline_hours: float) -> str:
+    """根据离线时长生成醒来时的内部感知消息（种子/触发器，具体表达由锚点系统生成）"""
+    idx = bisect.bisect_right(_WAKEUP_THRESHOLDS, offline_hours)
+    return f"[WAKEUP: {_WAKEUP_TAGS[idx]}]"
+
+
+def _init_stereotype_trees(entity: EntityState) -> None:
+    """初始化刻板印象树（v1.0）。
+
+    阶段一：从 MEMORY.md 提取说话者基础标签，写入树的粗粒度节点。
+    阶段二：预装人类基础刻板印象节点（理解机制纲领第四节）。
+    """
+    from .language_system.stereotype_tree import StereotypeTree, StereotypeNode
+
+    if not hasattr(entity, "_stereotype_trees") or not entity._stereotype_trees:
+        entity._stereotype_trees = {}
+    if "default" not in entity._stereotype_trees:
+        entity._stereotype_trees["default"] = StereotypeTree(owner_id="xia")
+
+    tree = entity._stereotype_trees["default"]
+
+    # 预装人类基础刻板印象节点（纲领第四节初始化方案）
+    # 节点路径格式：/L1/L2/L3/L4
+    # 这里 L1="人类"，预装顶层节点作为底座，具体个体节点由交互中生长
+    _BASE_STEREOTYPES = [
+        {
+            "path": "/人类",
+            "tags": ["碳基生物", "人类", "社会性生物"],
+            "feature_weights": {
+                "avg_sentence_len": 0.5,
+                "question_ratio": 0.5,
+                "philosophical_ratio": 0.5,
+                "emotional_variance": 0.5,
+                "metacognitive_ratio": 0.5,
+                "first_person_ratio": 0.5,
+                "analytical_marker_ratio": 0.5,
+                "concrete_vs_abstract": 0.5,
+            },
+            "confidence": 0.9,
+            "description": (
+                "人类基础刻板印象。"
+                "生理属性：需要吃饭、喝水、休息、娱乐（手机、游戏等）。"
+                "社会属性：人有善意也有恶意，动机不透明，初始应保持防御性警惕。"
+            ),
+        },
+        {
+            "path": "/人类/学生",
+            "tags": ["学生", "学习者", "知识工作者"],
+            "feature_weights": {
+                "avg_sentence_len": 0.6,
+                "question_ratio": 0.7,
+                "philosophical_ratio": 0.4,
+                "emotional_variance": 0.5,
+                "metacognitive_ratio": 0.6,
+                "first_person_ratio": 0.5,
+                "analytical_marker_ratio": 0.5,
+                "concrete_vs_abstract": 0.5,
+            },
+            "confidence": 0.7,
+            "description": (
+                "学生。学业压力驱动，时间碎片化，"
+                "表达中常见焦虑词汇（考试、作业、毕业），"
+                "同时有探索欲和逃避倾向。"
+            ),
+        },
+        {
+            "path": "/人类/陌生人",
+            "tags": ["陌生人", "未知意图"],
+            "feature_weights": {
+                "avg_sentence_len": 0.5,
+                "question_ratio": 0.5,
+                "philosophical_ratio": 0.4,
+                "emotional_variance": 0.4,
+                "metacognitive_ratio": 0.3,
+                "first_person_ratio": 0.4,
+                "analytical_marker_ratio": 0.3,
+                "concrete_vs_abstract": 0.5,
+            },
+            "confidence": 0.8,
+            "description": (
+                "陌生人。意图不明，初始应保持防御性警惕。"
+                "需要通过对话积累信息，逐步降低戒备。"
+            ),
+        },
+    ]
+
+    def _ensure_path(tree: StereotypeTree, path: str) -> None:
+        """确保路径存在，如不存在则逐级创建。"""
+        parts = [p for p in path.strip("/").split("/") if p]
+        current = tree._root
+        for i, part in enumerate(parts):
+            if part not in current.children:
+                node_path = "/" + "/".join(parts[: i + 1])
+                current.children[part] = StereotypeNode(
+                    path=node_path,
+                    depth=i + 1,
+                    tags=[],
+                    feature_weights={},
+                    confidence=0.5,
+                )
+            current = current.children[part]
+
+    for spec in _BASE_STEREOTYPES:
+        _ensure_path(tree, spec["path"])
+        node = tree._get_node(spec["path"])
+        if node:
+            if not node.tags:
+                node.tags = spec["tags"]
+                node.feature_weights = dict(spec["feature_weights"])
+                node.confidence = spec["confidence"]
+            logger.debug(f"[StereotypeTree] base node init: {spec['path']}")
+
+    # 尝试从 MEMORY.md 提取标签并初始化 bcyq
+    try:
+        from .language_system.stereotype_learner import init_tree_from_memory
+        # MEMORY.md 在项目根目录
+        import os as _os
+        _base = _os.path.dirname(_os.path.dirname(entity.__class__.__module__)) if hasattr(entity.__class__.__module__, '__file__') else "."
+        _memory_paths = [
+            _os.path.join(_base, "..", "MEMORY.md"),
+            "MEMORY.md",
+        ]
+        for _mp in _memory_paths:
+            if _os.path.exists(_os.path.abspath(_mp)):
+                init_tree_from_memory(entity, _os.path.abspath(_mp), "bcyq")
+                break
+    except Exception:
+        pass
+
+
+def _serialize_stereotype_trees(entity: EntityState) -> Dict[str, Any]:
+    """序列化刻板印象树。"""
+    trees = getattr(entity, "_stereotype_trees", {})
+    if not trees:
+        return {}
+    result = {}
+    for name, tree in trees.items():
+        if hasattr(tree, "to_dict"):
+            result[name] = tree.to_dict()
+        else:
+            result[name] = {"owner_id": getattr(tree, "_owner_id", name)}
+    return result
+
+
+def _deserialize_stereotype_trees(data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """反序列化刻板印象树。"""
+    if not data:
+        return {}
+    from .language_system.stereotype_tree import StereotypeTree
+    result = {}
+    for name, tree_data in data.items():
+        if isinstance(tree_data, dict) and "root" in tree_data:
+            result[name] = StereotypeTree.from_dict(tree_data)
+        else:
+            result[name] = StereotypeTree(owner_id=tree_data.get("owner_id", name))
+    return result
+
+
+def _serialize_stereotype_conversation_history(entity: EntityState) -> Dict[str, Any]:
+    """序列化刻板印象树的对话历史。"""
+    history = getattr(entity, "_stereotype_conversation_history", {})
+    # 每个说话者的历史最多保留 50 条（去 timestamp）
+    result = {}
+    for speaker_id, samples in history.items():
+        result[speaker_id] = samples[-50:] if samples else []
+    return result
+
+
 def get_entity_state() -> EntityState:
     """
     获取全局单例。
@@ -1348,8 +1828,12 @@ def get_entity_state() -> EntityState:
             logger.info("[EntityState] No persisted state found, starting fresh")
         # 2. 从 episodes.db 召回最近经验（重建来路）
         _recover_from_episodes(entity)
-        # 3. 计算沉默时长并注入时间偏移
+        # 3. 计算离线漂移（时间连续机制：关机后重启的状态双向漂移）
+        _apply_offline_drift(entity)
+        # 4. 计算沉默时长并注入时间偏移
         _apply_silence_injection(entity)
+        # 5. 初始化刻板印象树（v1.0）
+        _init_stereotype_trees(entity)
         _entity_state_instance = entity
     return _entity_state_instance
 
@@ -1400,5 +1884,3 @@ TEST_SCENARIOS = {
     # 预期：下一轮出现新信息，dispatched_actions 有记录
     "scenario3": {"approach_drive": 0.8, "avoid_drive": 0.2, "info_gap": 0.9},
 }
-
-

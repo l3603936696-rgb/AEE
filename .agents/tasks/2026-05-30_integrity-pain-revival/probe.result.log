@@ -1,0 +1,27 @@
+base tick=73  poke@76  restore@91  end@97
+tick=73 pain=0.2493 somatic=0.6484
+tick=74 pain=0.2487 somatic=0.6461
+tick=75 pain=0.2478 somatic=0.6393
+tick=76 pain=0.2468 somatic=0.6394  <<< POKE: edited executor.py
+tick=77 pain=0.3196 somatic=0.5862
+tick=78 pain=0.3870 somatic=0.5628
+tick=79 pain=0.4493 somatic=0.5773
+tick=80 pain=0.5086 somatic=0.5794
+tick=81 pain=0.5617 somatic=0.6000
+tick=82 pain=0.5817 somatic=0.5910
+tick=83 pain=0.5786 somatic=0.5902
+tick=84 pain=0.5733 somatic=0.5721
+tick=85 pain=0.5450 somatic=0.5217
+tick=86 pain=0.5535 somatic=0.6057
+tick=87 pain=0.5639 somatic=0.5934
+tick=88 pain=0.5625 somatic=0.5738
+tick=89 pain=0.5608 somatic=0.6015
+tick=90 pain=0.5636 somatic=0.5522
+tick=91 pain=0.5544 somatic=0.5763  <<< RESTORE: executor.py back to original
+tick=92 pain=0.5827 somatic=0.4610
+tick=93 pain=0.5703 somatic=0.4644
+tick=94 pain=0.5615 somatic=0.4608
+tick=95 pain=0.5541 somatic=0.4198
+tick=96 pain=0.5402 somatic=0.4080
+tick=97 pain=0.5545 somatic=0.4338
+DONE ¡ª executor.py restored, bytes_match=True

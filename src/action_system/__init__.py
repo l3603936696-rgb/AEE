@@ -22,6 +22,12 @@ XIA 主动行动系统
 出口目录：data/xia_voice/
     她想写什么都行——独白、笔记、疑问、给用户的留言、对世界的好奇……
     所有行动都记录在 xia_voice/manifest.jsonl
+
+---
+
+【双引擎架构笔记】
+XIA 有两个实例：初号机（动态 primitive）与糯糯（锁死 primitive）。
+详细设计见：docs/XIA_初号机_双引擎架构设计.md
 """
 
 from .triggers import evaluate_triggers

@@ -27,6 +27,25 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# 调参常量
+# ============================================================================
+
+_COMPOSE_TEMP_BASE         = 0.40   # compose_sentence 默认 softmax temperature
+_COMPOSE_TEMP_BOREDOM_GAIN = 0.50   # boredom=1 时 temperature 增量（上限 0.90）
+_ANCHOR_USE_BONUS          = 0.12   # 使用锚点词的模板加分
+_ANCHOR_STRENGTH_GAIN      = 1.0    # 锚点选词强度对"使用锚点奖励"的放大系数（种子值，待标定）
+                                    # 锚点被选得越强(anchor_score高)，带锚点模板越压过无锚点罐头句
+_ANCHOR_POS_WEIGHT: Dict[str, float] = {   # anchor_pos → 是否真正使用锚点词
+    "none":  0.0,
+    "adj":   1.0,
+    "head":  1.0,
+    "tail":  1.0,
+    "embed": 1.0,
+    "infix": 1.0,
+}
+
+
+# ============================================================================
 # 模板库
 # ============================================================================
 
@@ -465,7 +484,7 @@ PATTERNS += [
             + s.get("approach_urgency", 0.0) * 0.20
         ),
         "use_connector": False,
-        "anchor_pos": "head",
+        "anchor_pos": "none",  # 无 {anchor} 槽位的整体预测句，不领锚点使用奖励
     },
     # 感觉在变差
     {
@@ -476,7 +495,7 @@ PATTERNS += [
             + s.get("joy", 0.0) * -0.20
         ),
         "use_connector": False,
-        "anchor_pos": "head",
+        "anchor_pos": "none",  # 无 {anchor} 槽位的整体预测句，不领锚点使用奖励
     },
     # 预感不太好
     {
@@ -487,7 +506,7 @@ PATTERNS += [
             + s.get("somatic_tone_rising", 0.5) * -0.20
         ),
         "use_connector": False,
-        "anchor_pos": "head",
+        "anchor_pos": "none",  # 无 {anchor} 槽位的整体预测句，不领锚点使用奖励
     },
     # 估计会慢慢好起来（乐观预测）
     {
@@ -498,7 +517,7 @@ PATTERNS += [
             + s.get("approach_drive", 0.0) * 0.20
         ),
         "use_connector": False,
-        "anchor_pos": "head",
+        "anchor_pos": "none",  # 无 {anchor} 槽位的整体预测句，不领锚点使用奖励
     },
 ]
 
@@ -673,6 +692,83 @@ PATTERNS += [
     },
 ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. 他者朝向（感知到对方在分享/倾诉时，表达在场感）
+# _input_other / _input_sharing 由 pipeline 从 input_packet 注入
+# ─────────────────────────────────────────────────────────────────────────────
+
+PATTERNS += [
+    # 心事引用模板（_about / _preoccupation_intensity 由 pipeline 注入）
+    # 这些模板有 about 槽位，由 compose_sentence 替换为当前最强心事的对象
+    {
+        "template": "还在想{about}……",
+        "score_fn": lambda s: (
+            s.get("_preoccupation_intensity", 0.0) * 1.3
+            + s.get("loneliness", 0.0) * 0.1
+        ),
+        "use_connector": False,
+        "anchor_pos": "none",
+        "_uses_about": True,
+    },
+    {
+        "template": "{about}……心里还挂着",
+        "score_fn": lambda s: (
+            s.get("_preoccupation_intensity", 0.0) * 1.1
+            + s.get("unresolved", 0.0) * 0.2
+        ),
+        "use_connector": False,
+        "anchor_pos": "none",
+        "_uses_about": True,
+    },
+    {
+        "template": "想到{about}就……",
+        "score_fn": lambda s: (
+            s.get("_preoccupation_intensity", 0.0) * 1.2
+            + s.get("somatic_tone", 0.0) * 0.1
+        ),
+        "use_connector": False,
+        "anchor_pos": "none",
+        "_uses_about": True,
+    },
+    {
+        "template": "嗯……在呢",
+        "score_fn": lambda s: (
+            s.get("_input_other", 0.0) * 1.1
+            + s.get("_input_sharing", 0.0) * 0.3
+        ),
+        "use_connector": False,
+        "anchor_pos": "none",
+    },
+    {
+        "template": "在的……没关系",
+        "score_fn": lambda s: (
+            s.get("_input_other", 0.0) * 1.0
+            + s.get("_input_sharing", 0.0) * 0.3
+            + s.get("serenity", 0.0) * 0.1
+        ),
+        "use_connector": False,
+        "anchor_pos": "none",
+    },
+    {
+        "template": "听到了……",
+        "score_fn": lambda s: (
+            s.get("_input_other", 0.0) * 1.2
+            + s.get("_input_sharing", 0.0) * 0.2
+        ),
+        "use_connector": False,
+        "anchor_pos": "none",
+    },
+    {
+        "template": "陪着你的……",
+        "score_fn": lambda s: (
+            s.get("_input_other", 0.0) * 1.0
+            + s.get("_input_sharing", 0.0) * 0.4
+        ),
+        "use_connector": False,
+        "anchor_pos": "none",
+    },
+]
+
 assert len(PATTERNS) >= 30, f"PATTERNS count={len(PATTERNS)}, need >= 30"
 
 
@@ -790,6 +886,56 @@ logger.debug(
 
 
 # ============================================================================
+# 模板量纲归一化（导入期元数据预计算，详见 PLAN_template_scale_normalization.md）
+# ============================================================================
+
+# score_fn 引用的状态维度全集（从源码静态收集，共 32 维）。
+# 探针必须用完整 dict 显式置 0，否则 s.get(dim, 默认值) 的默认值（如 energy=0.5）会污染 base。
+_PROBE_DIMS: List[str] = [
+    "_input_other", "_input_sharing", "_preoccupation_intensity",
+    "anxiety", "approach_drive", "approach_explore", "approach_social", "approach_urgency",
+    "avoid_drive", "boredom", "boredom_despair", "boredom_futility", "curiosity",
+    "danger_level", "danger_level_rising", "energy", "energy_rising", "excitement",
+    "fatigue", "fatigue_rising", "fear", "info_gap", "joy", "loneliness", "prediction_error",
+    "sadness", "serenity", "somatic_tone", "somatic_tone_rising", "stress", "stress_rising",
+    "unresolved",
+]
+
+
+def _template_theoretical_max(score_fn: Callable) -> float:
+    """
+    两遍探针：估计 score_fn 在 [0,1]^n 上的理论最大值。
+    ① 单维探针定每维系数正负：coeff_d = f(e_d) - f(全0)。
+    ② 把所有正系数维置 1、其余置 0，求 f(best_vec)。
+    对线性 score_fn 与 max()-of-非负组合（单调不减）均给出**精确**最大值。
+    """
+    _zero = {d: 0.0 for d in _PROBE_DIMS}
+    base = float(score_fn(_zero))
+    _best = dict(_zero)
+    for d in _PROBE_DIMS:
+        _e = dict(_zero)
+        _e[d] = 1.0
+        coeff = float(score_fn(_e)) - base
+        _best[d] = max(0.0, min(1.0, _best[d] + max(0.0, coeff) / max(abs(coeff), 1e-9)))
+    return float(score_fn(_best))
+
+
+def _precompute_template_scales(templates: List[Dict]) -> None:
+    """为每个模板预存封顶除数 _score_divisor = max(理论最大, 1.0)。
+    只削高（量纲>1.0 的家族压回 [0,1]），不抬低（≤1.0 的恒等通过）。"""
+    for p in templates:
+        fn = p.get("score_fn")
+        try:
+            tmax = _template_theoretical_max(fn) if fn is not None else 1.0
+        except Exception:
+            tmax = 1.0
+        p["_score_divisor"] = max(tmax, 1.0)
+
+
+_precompute_template_scales(PATTERNS)
+
+
+# ============================================================================
 # 核心函数
 # ============================================================================
 
@@ -819,6 +965,8 @@ def compose_sentence(
     learned_weights: Optional[Dict[int, Dict[str, float]]] = None,
     extra_templates: Optional[List[Dict]] = None,
     second_anchor: Optional[str] = None,
+    temperature: float = _COMPOSE_TEMP_BASE,
+    anchor_score: float = 0.0,
 ) -> Tuple[str, int]:
     """
     根据当前状态，从模板库中选择一个模板，填充锚点词，组合成完整短句。
@@ -871,12 +1019,17 @@ def compose_sentence(
         else:
             score = 0.0
 
+        # 量纲归一化封顶：超过 1.0 的家族压回 [0,1]，≤1.0 的恒等通过（PLAN §3）。
+        score = score / p.get("_score_divisor", 1.0)
+
         if learned_weights and i in learned_weights:
             lw = learned_weights[i]
             score += sum(w * state.get(dim, 0.0) for dim, w in lw.items())
 
         pos = p.get("anchor_pos", "head")
         score -= _anchor_penalty(len(anchor), pos)
+        # 锚点使用奖励 × (1 + 强度增益)：锚点被选得越强，越压过无锚点模板
+        score += _ANCHOR_USE_BONUS * _ANCHOR_POS_WEIGHT.get(pos, 0.0) * (1.0 + _ANCHOR_STRENGTH_GAIN * anchor_score)
 
         if template_efficiency and i in template_efficiency:
             score += min(template_efficiency[i], 0.5)
@@ -914,7 +1067,7 @@ def compose_sentence(
                 if _global_idx < len(raw_scores):
                     raw_scores[_global_idx] += _bonus
 
-    chosen_idx = _softmax_sample(raw_scores, temperature=0.4)
+    chosen_idx = _softmax_sample(raw_scores, temperature=temperature)
 
     # ---- 根据选中的是单锚点还是复合模板，填充句子 ----
     if chosen_idx >= compound_offset and second_anchor:
@@ -928,7 +1081,16 @@ def compose_sentence(
         # 选中了单锚点模板
         chosen = all_templates[chosen_idx]
         template = chosen["template"]
-        sentence = _fill_anchor(template, anchor)
+        # 心事引用模板：用 _preoccupation_about 填充 {about}
+        if chosen.get("_uses_about") and "{about}" in template:
+            _about = state.get("_preoccupation_about", "")
+            if _about:
+                sentence = template.replace("{about}", _about)
+            else:
+                # 没有心事对象 → 退回锚词
+                sentence = _fill_anchor(template.replace("{about}", "{anchor}"), anchor)
+        else:
+            sentence = _fill_anchor(template, anchor)
         result_idx = chosen_idx
 
         if connector and chosen.get("use_connector", True):

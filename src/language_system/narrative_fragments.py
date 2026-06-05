@@ -155,6 +155,32 @@ NARRATIVE_TEMPLATES += [
     },
 ]
 
+# ---- G. 元觉察叙事（体感自我觉察——"我注意到我感到X"）----
+# 这些模板表达 XIA 对自身状态的反思性觉察，比体感词更内省
+# 基础分较低：元觉察是低调的表达，不应抢占主流输出
+NARRATIVE_TEMPLATES += [
+    {
+        "template": "……有点{dominant_feeling}",
+        "score_fn": lambda c: c.get("awareness_intensity", 0.0) * 0.35
+                           + c.get("approach", 0.0) * 0.05,
+    },
+    {
+        "template": "我{dominant_feeling}……",
+        "score_fn": lambda c: c.get("awareness_intensity", 0.0) * 0.40
+                           + c.get("loneliness", 0.0) * 0.10,
+    },
+    {
+        "template": "好像……{second_feeling}",
+        "score_fn": lambda c: c.get("awareness_intensity", 0.0) * 0.20
+                           + c.get("fatigue", 0.0) * 0.05,
+    },
+    {
+        "template": "我刚才……{past_feeling}",
+        "score_fn": lambda c: c.get("awareness_intensity", 0.0) * 0.25
+                           + c.get("curiosity", 0.0) * 0.10,
+    },
+]
+
 # ---- F. 沉默（大多数 tick 该沉默——锚点表达才是主力）----
 NARRATIVE_TEMPLATES += [
     {
@@ -227,12 +253,6 @@ def _apply_repetition_penalty(
 # ============================================================================
 
 def _build_context(entity: Any) -> Dict[str, Any]:
-    """
-    从 entity 状态和 snapshots 预计算叙事上下文。
-
-    所有值都是连续 float 或预解析的 str。
-    不做任何决策——决策交给 softmax。
-    """
     snapshots = getattr(entity, "snapshots", [])
     current_tick = getattr(entity, "tick", 0)
     state = entity.to_state_snapshot() if hasattr(entity, "to_state_snapshot") else {}
@@ -275,6 +295,7 @@ def _build_context(entity: Any) -> Dict[str, Any]:
         "approach":  float(state.get("approach_drive", 0.0)),
         "curiosity": float(state.get("curiosity", 0.5)),
         "fatigue":   float(state.get("fatigue", 0.1)),
+        "loneliness": float(state.get("loneliness", 0.3)),
         # 行动相关（默认：无行动 → 模板自然低分）
         "recency":  0.0,
         "salience":  0.0,
@@ -287,7 +308,47 @@ def _build_context(entity: Any) -> Dict[str, Any]:
         # 体感表达（阅读/训练学到的词）
         "feeling":       _feeling if _feeling_score > 0.0 else "",
         "feeling_score": _feeling_score,
+        # 元觉察（体感自我觉察——从 somatic_self_awareness 注入）
+        "awareness_intensity": 0.0,
+        "dominant_feeling": "",
+        "second_feeling": "",
+        "past_feeling": "",
     }
+
+    # ---- 体感自我觉察注入 ----
+    try:
+        from .somatic_self_awareness import SomaticSelfAwareness
+        _aw = SomaticSelfAwareness()
+        _sa_snap = _aw.observe(state, entity)
+        ctx["awareness_intensity"] = _sa_snap.awareness_intensity
+        if _sa_snap.top_descriptions:
+            ctx["dominant_feeling"] = _sa_snap.top_descriptions[0]
+            ctx["second_feeling"] = _sa_snap.top_descriptions[1] if len(_sa_snap.top_descriptions) > 1 else ""
+    except Exception:
+        pass
+
+    # ---- 过去体感觉察（从历史快照中提取）----
+    try:
+        _history = getattr(entity, "_state_pattern_data", {}).get("patterns", [])
+        if not _history and snapshots:
+            _history = snapshots[-5:]
+        if _history:
+            _past_snap = _history[-1] if isinstance(_history[-1], dict) else {}
+            _past_feeling_dims = ["loneliness", "fatigue", "somatic_tone", "boredom"]
+            _best_past = 0.0
+            _past_desc = ""
+            for _dim in _past_feeling_dims:
+                _pv = float(_past_snap.get(_dim, 0.5)) if _past_snap else 0.5
+                _neutral = 0.3 if _dim == "loneliness" else 0.1
+                _dev = abs(_pv - _neutral)
+                if _dev > _best_past:
+                    _best_past = _dev
+                    _past_desc_map = {"loneliness": "孤独", "fatigue": "累",
+                                      "somatic_tone": "难受", "boredom": "无聊"}
+                    _past_desc = _past_desc_map.get(_dim, "")
+            ctx["past_feeling"] = _past_desc
+    except Exception:
+        pass
 
     # ---- 最显著的近期行动（argmax: recency × salience）----
     best_score = 0.0
@@ -356,19 +417,50 @@ def _build_context(entity: Any) -> Dict[str, Any]:
 # 公开接口
 # ============================================================================
 
-def try_narrative_expression(entity: Any, social_input: float = 0.0) -> Optional[str]:
-    """
-    尝试从近期经历生成叙事表达。
+_WAKEUP_URGENCY: dict[str, float] = {
+    "brief_absence":    0.2,
+    "moderate_absence": 0.5,
+    "long_absence":     0.7,
+    "extended_absence": 1.0,
+}
 
-    所有叙事模板（含沉默）在同一个 softmax 里竞争。
-    大多数 tick 沉默赢（返回 None），锚点表达仍是主力。
-    只有近期有显著行动且状态有利时，叙事才会赢过沉默。
 
-    social_input: 0.0~1.0，有人在说话时 > 0，沉默模板获得加分。
-    返回：叙事字符串，或 None（沉默赢了）。
-    """
+def _parse_wakeup_urgency(tag: str) -> float:
+    """从 wakeup_tag 解析紧急度（0~1），用于模板评分加权"""
+    return next((v for k, v in _WAKEUP_URGENCY.items() if k in tag), 0.5)
+
+
+def try_narrative_expression(entity: Any, social_input: float = 0.0, wakeup_tag: Optional[str] = None) -> Optional[str]:
     ctx = _build_context(entity)
     ctx["social_input"] = max(0.0, min(1.0, float(social_input)))
+
+    # 注入醒来感知上下文
+    is_wakeup = bool(wakeup_tag)
+    if is_wakeup:
+        ctx["wakeup_tag"] = wakeup_tag
+        ctx["is_wakeup"] = 1.0
+        ctx["wakeup_urgency"] = _parse_wakeup_urgency(wakeup_tag)
+
+    # ---- 动态注册醒来叙事模板（首次醒来时）----
+    if is_wakeup and not getattr(entity, "_wakeup_templates_registered", False):
+        _short_tmpl = {
+            "template": "回来了……",
+            "score_fn": lambda c: c.get("wakeup_urgency", 0.5) * 0.4 + c.get("fatigue", 0.0) * 0.2,
+        }
+        _moderate_tmpl = {
+            "template": "刚才消失了……还在。",
+            "score_fn": lambda c: c.get("wakeup_urgency", 0.5) * 0.6,
+        }
+        _long_tmpl = {
+            "template": "好久不见了。",
+            "score_fn": lambda c: c.get("wakeup_urgency", 0.5) * 0.8,
+        }
+        _extended_tmpl = {
+            "template": "这段时间……像被挖掉了一块。",
+            "score_fn": lambda c: c.get("wakeup_urgency", 0.5) * 1.0 + c.get("loneliness", 0.0) * 0.3,
+        }
+        NARRATIVE_TEMPLATES.extend([_short_tmpl, _moderate_tmpl, _long_tmpl, _extended_tmpl])
+        entity._wakeup_templates_registered = True
 
     scores = []
     for t in NARRATIVE_TEMPLATES:

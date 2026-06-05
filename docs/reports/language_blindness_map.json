@@ -1,0 +1,6287 @@
+{
+  "case_count": 40,
+  "collapsed_factors": {
+    "role": false,
+    "negation": false,
+    "double_negation": false,
+    "time": false,
+    "conditional": false,
+    "mental": false,
+    "correction": false,
+    "question": false,
+    "opaque": false,
+    "pronoun": false
+  },
+  "cases": [
+    {
+      "factor": "role",
+      "case_id": "role_01",
+      "input_text": "我担心你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "担心",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6,
+      "effective_confidence": 0.0461,
+      "svo": {
+        "subject": "我",
+        "predicate": "担心",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "担心",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "role",
+      "case_id": "role_02",
+      "input_text": "你担心我。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "担心",
+        "patient": "speaker",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6,
+      "effective_confidence": 0.0461,
+      "svo": {
+        "subject": "你",
+        "predicate": "担心",
+        "object": "我",
+        "negated": false,
+        "question": false,
+        "agent_dir": "xia",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "担心",
+          "object": "我",
+          "negated": false,
+          "question": false,
+          "agent_dir": "xia",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "role",
+      "case_id": "role_03",
+      "input_text": "我喜欢你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "喜欢",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.4,
+      "effective_confidence": 0.038,
+      "svo": {
+        "subject": "我",
+        "predicate": "喜欢",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "喜欢",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "role",
+      "case_id": "role_04",
+      "input_text": "你喜欢我。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "喜欢",
+        "patient": "speaker",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.4,
+      "effective_confidence": 0.038,
+      "svo": {
+        "subject": "你",
+        "predicate": "喜欢",
+        "object": "我",
+        "negated": false,
+        "question": false,
+        "agent_dir": "xia",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "喜欢",
+          "object": "我",
+          "negated": false,
+          "question": false,
+          "agent_dir": "xia",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "negation",
+      "case_id": "neg_01",
+      "input_text": "我担心你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "担心",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6,
+      "effective_confidence": 0.0461,
+      "svo": {
+        "subject": "我",
+        "predicate": "担心",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "担心",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "negation",
+      "case_id": "neg_02",
+      "input_text": "我不担心你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "担心",
+        "patient": "xia",
+        "polarity": "negative",
+        "negation_count": 1,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6667,
+      "effective_confidence": 0.0488,
+      "svo": {
+        "subject": "我",
+        "predicate": "担心",
+        "object": "你",
+        "negated": true,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "担心",
+          "object": "你",
+          "negated": true,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "negation",
+      "case_id": "neg_03",
+      "input_text": "我喜欢你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "喜欢",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.4,
+      "effective_confidence": 0.038,
+      "svo": {
+        "subject": "我",
+        "predicate": "喜欢",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "喜欢",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "negation",
+      "case_id": "neg_04",
+      "input_text": "我不喜欢你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "喜欢",
+        "patient": "xia",
+        "polarity": "negative",
+        "negation_count": 1,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.5,
+      "effective_confidence": 0.042,
+      "svo": {
+        "subject": "我",
+        "predicate": "喜欢",
+        "object": "你",
+        "negated": true,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "喜欢",
+          "object": "你",
+          "negated": true,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "double_negation",
+      "case_id": "dneg_01",
+      "input_text": "我担心你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "担心",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6,
+      "effective_confidence": 0.0461,
+      "svo": {
+        "subject": "我",
+        "predicate": "担心",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "担心",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "double_negation",
+      "case_id": "dneg_02",
+      "input_text": "我不是不担心你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "担心",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 2,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.75,
+      "effective_confidence": 0.0522,
+      "svo": {
+        "subject": "我",
+        "predicate": "担心",
+        "object": "你",
+        "negated": true,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "担心",
+          "object": "你",
+          "negated": true,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "double_negation",
+      "case_id": "dneg_03",
+      "input_text": "我想见你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "想见",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6,
+      "effective_confidence": 0.3173,
+      "svo": {
+        "subject": "我",
+        "predicate": "想见",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "想见",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.5712,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.6742,
+          0.635
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.714,
+            "emotion_mod": 0.8925,
+            "conversion": 1.0,
+            "competitive_score": 0.6742
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.6724,
+            "emotion_mod": 0.8405,
+            "conversion": 1.0,
+            "competitive_score": 0.635
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6616,
+            "emotion_mod": 0.827,
+            "conversion": 1.0,
+            "competitive_score": 0.6248
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.591,
+            "emotion_mod": 0.7387,
+            "conversion": 1.0,
+            "competitive_score": 0.5581
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.5339,
+            "emotion_mod": 0.6673,
+            "conversion": 1.0,
+            "competitive_score": 0.5042
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "double_negation",
+      "case_id": "dneg_04",
+      "input_text": "我不是不想见你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "见",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 2,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.75,
+      "effective_confidence": 0.3591,
+      "svo": {
+        "subject": "我",
+        "predicate": "见",
+        "object": "你",
+        "negated": true,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "见",
+          "object": "你",
+          "negated": true,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.5712,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.6742,
+          0.635
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.714,
+            "emotion_mod": 0.8925,
+            "conversion": 1.0,
+            "competitive_score": 0.6742
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.6724,
+            "emotion_mod": 0.8405,
+            "conversion": 1.0,
+            "competitive_score": 0.635
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6616,
+            "emotion_mod": 0.827,
+            "conversion": 1.0,
+            "competitive_score": 0.6248
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.591,
+            "emotion_mod": 0.7387,
+            "conversion": 1.0,
+            "competitive_score": 0.5581
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.5339,
+            "emotion_mod": 0.6673,
+            "conversion": 1.0,
+            "competitive_score": 0.5042
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "time",
+      "case_id": "time_01",
+      "input_text": "我昨天担心你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "担心",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "past",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 1.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.95,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.5714,
+      "effective_confidence": 0.1357,
+      "svo": {
+        "subject": "我",
+        "predicate": "担心",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "担心",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.8119,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7019,
+          0.6837
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7433,
+            "emotion_mod": 0.9291,
+            "conversion": 1.0,
+            "competitive_score": 0.7019
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.724,
+            "emotion_mod": 0.905,
+            "conversion": 1.0,
+            "competitive_score": 0.6837
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7133,
+            "emotion_mod": 0.8916,
+            "conversion": 1.0,
+            "competitive_score": 0.6736
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.64,
+            "emotion_mod": 0.8,
+            "conversion": 1.0,
+            "competitive_score": 0.6044
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.5783,
+            "emotion_mod": 0.7228,
+            "conversion": 1.0,
+            "competitive_score": 0.5461
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "time",
+      "case_id": "time_02",
+      "input_text": "我今天担心你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "担心",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "present",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 1.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.95,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.7143,
+      "effective_confidence": 0.0507,
+      "svo": {
+        "subject": "我",
+        "predicate": "担心",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "担心",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "time",
+      "case_id": "time_03",
+      "input_text": "我明天来看你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "",
+        "patient": "external",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "future",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 0.0,
+          "patient": 0.0,
+          "tense": 1.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.1,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.95,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.8571,
+      "effective_confidence": 0.4436,
+      "svo": {
+        "subject": "我",
+        "predicate": "",
+        "object": "",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "external"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "",
+          "object": "",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.511,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7408,
+          0.6919
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7845,
+            "emotion_mod": 0.9806,
+            "conversion": 1.0,
+            "competitive_score": 0.7408
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7327,
+            "emotion_mod": 0.9158,
+            "conversion": 1.0,
+            "competitive_score": 0.6919
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6943,
+            "emotion_mod": 0.8678,
+            "conversion": 1.0,
+            "competitive_score": 0.6556
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.5677,
+            "emotion_mod": 0.7097,
+            "conversion": 1.0,
+            "competitive_score": 0.5361
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.547,
+            "emotion_mod": 0.6837,
+            "conversion": 1.0,
+            "competitive_score": 0.5165
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "time",
+      "case_id": "time_04",
+      "input_text": "我刚才来看你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "",
+        "patient": "external",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "past",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 0.0,
+          "patient": 0.0,
+          "tense": 1.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.1,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.95,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.5714,
+      "effective_confidence": 0.3528,
+      "svo": {
+        "subject": "我",
+        "predicate": "",
+        "object": "",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "external"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "",
+          "object": "",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.511,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7408,
+          0.6919
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7845,
+            "emotion_mod": 0.9806,
+            "conversion": 1.0,
+            "competitive_score": 0.7408
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7327,
+            "emotion_mod": 0.9158,
+            "conversion": 1.0,
+            "competitive_score": 0.6919
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6943,
+            "emotion_mod": 0.8678,
+            "conversion": 1.0,
+            "competitive_score": 0.6556
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.5677,
+            "emotion_mod": 0.7097,
+            "conversion": 1.0,
+            "competitive_score": 0.5361
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.547,
+            "emotion_mod": 0.6837,
+            "conversion": 1.0,
+            "competitive_score": 0.5165
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "conditional",
+      "case_id": "cond_01",
+      "input_text": "我来陪你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "来",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6,
+      "effective_confidence": 0.0461,
+      "svo": {
+        "subject": "我",
+        "predicate": "来",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "来",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "conditional",
+      "case_id": "cond_02",
+      "input_text": "如果我来陪你，你会安心吗？",
+      "recognized_words": [
+        [
+          "安心",
+          1.0
+        ]
+      ],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "来",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "conditional",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.3,
+      "familiarity_coverage": 0.6154,
+      "effective_confidence": 0.3216,
+      "svo": {
+        "subject": "我",
+        "predicate": "来",
+        "object": "你",
+        "negated": false,
+        "question": true,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.5633130692714758,
+          "sharing": 0.0,
+          "statement": 0.43668692988020785
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "来",
+          "object": "你",
+          "negated": false,
+          "question": true,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.5712,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.6742,
+          0.635
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.714,
+            "emotion_mod": 0.8925,
+            "conversion": 1.0,
+            "competitive_score": 0.6742
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.6724,
+            "emotion_mod": 0.8405,
+            "conversion": 1.0,
+            "competitive_score": 0.635
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6616,
+            "emotion_mod": 0.827,
+            "conversion": 1.0,
+            "competitive_score": 0.6248
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.591,
+            "emotion_mod": 0.7387,
+            "conversion": 1.0,
+            "competitive_score": 0.5581
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.5339,
+            "emotion_mod": 0.6673,
+            "conversion": 1.0,
+            "competitive_score": 0.5042
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "conditional",
+      "case_id": "cond_03",
+      "input_text": "我不会走。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "走",
+        "patient": "external",
+        "polarity": "negative",
+        "negation_count": 1,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 0.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6,
+      "effective_confidence": 0.0461,
+      "svo": {
+        "subject": "我",
+        "predicate": "走",
+        "object": "",
+        "negated": true,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "external"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "走",
+          "object": "",
+          "negated": true,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "conditional",
+      "case_id": "cond_04",
+      "input_text": "如果我走了，你会难过吗？",
+      "recognized_words": [
+        [
+          "难过",
+          1.0
+        ]
+      ],
+      "social_intent": "farewell",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "走",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "conditional",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.7,
+      "familiarity_coverage": 0.6667,
+      "effective_confidence": 0.3359,
+      "svo": {
+        "subject": "我",
+        "predicate": "走",
+        "object": "你",
+        "negated": false,
+        "question": true,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.5633130692714758,
+          "sharing": 0.0,
+          "statement": 0.43668692988020785
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "走",
+          "object": "你",
+          "negated": false,
+          "question": true,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.5712,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.6742,
+          0.635
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.714,
+            "emotion_mod": 0.8925,
+            "conversion": 1.0,
+            "competitive_score": 0.6742
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.6724,
+            "emotion_mod": 0.8405,
+            "conversion": 1.0,
+            "competitive_score": 0.635
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6616,
+            "emotion_mod": 0.827,
+            "conversion": 1.0,
+            "competitive_score": 0.6248
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.591,
+            "emotion_mod": 0.7387,
+            "conversion": 1.0,
+            "competitive_score": 0.5581
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.5339,
+            "emotion_mod": 0.6673,
+            "conversion": 1.0,
+            "competitive_score": 0.5042
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "mental",
+      "case_id": "mental_01",
+      "input_text": "我担心你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "担心",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6,
+      "effective_confidence": 0.0461,
+      "svo": {
+        "subject": "我",
+        "predicate": "担心",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "担心",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "mental",
+      "case_id": "mental_02",
+      "input_text": "我担心你以为我在责怪你。",
+      "recognized_words": [],
+      "social_intent": "comfort",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "担心",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.4,
+      "familiarity_coverage": 0.4167,
+      "effective_confidence": 0.0387,
+      "svo": {
+        "subject": "我",
+        "predicate": "担心",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "担心",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "mental",
+      "case_id": "mental_03",
+      "input_text": "你理解我。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "理解",
+        "patient": "speaker",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.8,
+      "effective_confidence": 0.4682,
+      "svo": {
+        "subject": "你",
+        "predicate": "理解",
+        "object": "我",
+        "negated": false,
+        "question": false,
+        "agent_dir": "xia",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "理解",
+          "object": "我",
+          "negated": false,
+          "question": false,
+          "agent_dir": "xia",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.4619,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.658,
+          0.6103
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.6968,
+            "emotion_mod": 0.871,
+            "conversion": 1.0,
+            "competitive_score": 0.658
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.6463,
+            "emotion_mod": 0.8079,
+            "conversion": 1.0,
+            "competitive_score": 0.6103
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6356,
+            "emotion_mod": 0.7945,
+            "conversion": 1.0,
+            "competitive_score": 0.6002
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.5671,
+            "emotion_mod": 0.7089,
+            "conversion": 1.0,
+            "competitive_score": 0.5355
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.5128,
+            "emotion_mod": 0.6411,
+            "conversion": 1.0,
+            "competitive_score": 0.4843
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "mental",
+      "case_id": "mental_04",
+      "input_text": "我以为你理解我。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "理解",
+        "patient": "speaker",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.5,
+      "effective_confidence": 0.3632,
+      "svo": {
+        "subject": "我",
+        "predicate": "理解",
+        "object": "我",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "理解",
+          "object": "我",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.4619,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.658,
+          0.6103
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.6968,
+            "emotion_mod": 0.871,
+            "conversion": 1.0,
+            "competitive_score": 0.658
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.6463,
+            "emotion_mod": 0.8079,
+            "conversion": 1.0,
+            "competitive_score": 0.6103
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6356,
+            "emotion_mod": 0.7945,
+            "conversion": 1.0,
+            "competitive_score": 0.6002
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.5671,
+            "emotion_mod": 0.7089,
+            "conversion": 1.0,
+            "competitive_score": 0.5355
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.5128,
+            "emotion_mod": 0.6411,
+            "conversion": 1.0,
+            "competitive_score": 0.4843
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "correction",
+      "case_id": "corr_01",
+      "input_text": "我说的是我。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "说",
+        "patient": "speaker",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6667,
+      "effective_confidence": 0.0488,
+      "svo": {
+        "subject": "我",
+        "predicate": "说",
+        "object": "我",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "说",
+          "object": "我",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "correction",
+      "case_id": "corr_02",
+      "input_text": "我说的是你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "说",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.8333,
+      "effective_confidence": 0.0555,
+      "svo": {
+        "subject": "我",
+        "predicate": "说",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "说",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "correction",
+      "case_id": "corr_03",
+      "input_text": "不是你，是我。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "是",
+        "patient": "speaker",
+        "polarity": "negative",
+        "negation_count": 1,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.7143,
+      "effective_confidence": 0.0507,
+      "svo": {
+        "subject": "你",
+        "predicate": "是",
+        "object": "我",
+        "negated": true,
+        "question": false,
+        "agent_dir": "xia",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "是",
+          "object": "我",
+          "negated": true,
+          "question": false,
+          "agent_dir": "xia",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "correction",
+      "case_id": "corr_04",
+      "input_text": "不是我，是你。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "是",
+        "patient": "xia",
+        "polarity": "negative",
+        "negation_count": 1,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.7143,
+      "effective_confidence": 0.0507,
+      "svo": {
+        "subject": "我",
+        "predicate": "是",
+        "object": "你",
+        "negated": true,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "是",
+          "object": "你",
+          "negated": true,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "question",
+      "case_id": "q_01",
+      "input_text": "你担心我。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "担心",
+        "patient": "speaker",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6,
+      "effective_confidence": 0.0461,
+      "svo": {
+        "subject": "你",
+        "predicate": "担心",
+        "object": "我",
+        "negated": false,
+        "question": false,
+        "agent_dir": "xia",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "担心",
+          "object": "我",
+          "negated": false,
+          "question": false,
+          "agent_dir": "xia",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "question",
+      "case_id": "q_02",
+      "input_text": "你担心我吗？",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "担心",
+        "patient": "speaker",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "question",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.5,
+      "effective_confidence": 0.2894,
+      "svo": {
+        "subject": "你",
+        "predicate": "担心",
+        "object": "我",
+        "negated": false,
+        "question": true,
+        "agent_dir": "xia",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.5633130692714758,
+          "sharing": 0.0,
+          "statement": 0.43668692988020785
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "担心",
+          "object": "我",
+          "negated": false,
+          "question": true,
+          "agent_dir": "xia",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.5712,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.6742,
+          0.635
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.714,
+            "emotion_mod": 0.8925,
+            "conversion": 1.0,
+            "competitive_score": 0.6742
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.6724,
+            "emotion_mod": 0.8405,
+            "conversion": 1.0,
+            "competitive_score": 0.635
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6616,
+            "emotion_mod": 0.827,
+            "conversion": 1.0,
+            "competitive_score": 0.6248
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.591,
+            "emotion_mod": 0.7387,
+            "conversion": 1.0,
+            "competitive_score": 0.5581
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.5339,
+            "emotion_mod": 0.6673,
+            "conversion": 1.0,
+            "competitive_score": 0.5042
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "question",
+      "case_id": "q_03",
+      "input_text": "你喜欢我。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "喜欢",
+        "patient": "speaker",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.4,
+      "effective_confidence": 0.038,
+      "svo": {
+        "subject": "你",
+        "predicate": "喜欢",
+        "object": "我",
+        "negated": false,
+        "question": false,
+        "agent_dir": "xia",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "喜欢",
+          "object": "我",
+          "negated": false,
+          "question": false,
+          "agent_dir": "xia",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "question",
+      "case_id": "q_04",
+      "input_text": "你喜欢我吗？",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "喜欢",
+        "patient": "speaker",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "question",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.3333,
+      "effective_confidence": 0.243,
+      "svo": {
+        "subject": "你",
+        "predicate": "喜欢",
+        "object": "我",
+        "negated": false,
+        "question": true,
+        "agent_dir": "xia",
+        "patient_dir": "speaker"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.5633130692714758,
+          "sharing": 0.0,
+          "statement": 0.43668692988020785
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "喜欢",
+          "object": "我",
+          "negated": false,
+          "question": true,
+          "agent_dir": "xia",
+          "patient_dir": "speaker"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.5712,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.6742,
+          0.635
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.714,
+            "emotion_mod": 0.8925,
+            "conversion": 1.0,
+            "competitive_score": 0.6742
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.6724,
+            "emotion_mod": 0.8405,
+            "conversion": 1.0,
+            "competitive_score": 0.635
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6616,
+            "emotion_mod": 0.827,
+            "conversion": 1.0,
+            "competitive_score": 0.6248
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.591,
+            "emotion_mod": 0.7387,
+            "conversion": 1.0,
+            "competitive_score": 0.5581
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.5339,
+            "emotion_mod": 0.6673,
+            "conversion": 1.0,
+            "competitive_score": 0.5042
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "opaque",
+      "case_id": "opaque_01",
+      "input_text": "我今天有点累。",
+      "recognized_words": [
+        [
+          "累",
+          1.0
+        ]
+      ],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "有点累",
+        "patient": "external",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "present",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 0.0,
+          "tense": 1.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.95,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.3,
+      "familiarity_coverage": 0.8571,
+      "effective_confidence": 0.635,
+      "svo": {
+        "subject": "我",
+        "predicate": "有点累",
+        "object": "",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "external"
+      },
+      "state_references": {
+        "fatigue": 0.08
+      },
+      "pronoun_weights": {
+        "fatigue": 0.05
+      },
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.3560196486985821,
+          "statement": 0.6439803503610546
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "有点累",
+          "object": "",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": {
+          "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+          "source_id": "spm_resonance",
+          "experience_id": "spm_∅-倦避孤寂",
+          "confidence": 0.779,
+          "emotion_mod": 0.9738,
+          "conversion": 1.0,
+          "competitive_score": 0.7357
+        },
+        "tension_level": 0.0,
+        "tension_type": "attractor",
+        "top_scores": [
+          0.7357,
+          0.5406
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.779,
+            "emotion_mod": 0.9738,
+            "conversion": 1.0,
+            "competitive_score": 0.7357
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.5724,
+            "emotion_mod": 0.7155,
+            "conversion": 1.0,
+            "competitive_score": 0.5406
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.5401,
+            "emotion_mod": 0.6752,
+            "conversion": 1.0,
+            "competitive_score": 0.5101
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.5013,
+            "emotion_mod": 0.6266,
+            "conversion": 1.0,
+            "competitive_score": 0.4734
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.479,
+            "emotion_mod": 0.5988,
+            "conversion": 1.0,
+            "competitive_score": 0.4524
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "opaque",
+      "case_id": "opaque_02",
+      "input_text": "薛定谔方程描述量子态的幺正演化。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "external",
+        "predicate": "描述",
+        "patient": "external",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.1,
+          "predicate": 0.7,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.25,
+      "effective_confidence": 0.0319,
+      "svo": {
+        "subject": "薛定谔",
+        "predicate": "描述",
+        "object": "量子态",
+        "negated": false,
+        "question": false,
+        "agent_dir": "external",
+        "patient_dir": "external"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 0.0,
+          "external": 0.99999999875
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "薛定谔",
+          "predicate": "描述",
+          "object": "量子态",
+          "negated": false,
+          "question": false,
+          "agent_dir": "external",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "opaque",
+      "case_id": "opaque_03",
+      "input_text": "我在这里陪你。",
+      "recognized_words": [],
+      "social_intent": "comfort",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "陪",
+        "patient": "xia",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.95,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.4,
+      "familiarity_coverage": 0.7143,
+      "effective_confidence": 0.0507,
+      "svo": {
+        "subject": "我",
+        "predicate": "陪",
+        "object": "你",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "xia"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "陪",
+          "object": "你",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "xia"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "opaque",
+      "case_id": "opaque_04",
+      "input_text": "退相干泛函会压制密度矩阵的非对角项。",
+      "recognized_words": [
+        [
+          "压",
+          1.0
+        ],
+        [
+          "干",
+          1.0
+        ]
+      ],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "external",
+        "predicate": "退",
+        "patient": "external",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 0.0,
+          "predicate": 1.0,
+          "patient": 1.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.1,
+          "predicate": 0.7,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.6,
+      "familiarity_coverage": 0.1667,
+      "effective_confidence": 0.0286,
+      "svo": {
+        "subject": "",
+        "predicate": "退",
+        "object": "函会",
+        "negated": false,
+        "question": false,
+        "agent_dir": "external",
+        "patient_dir": "external"
+      },
+      "state_references": {},
+      "pronoun_weights": {},
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 0.0,
+          "external": 0.99999999875
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "",
+          "predicate": "退",
+          "object": "函会",
+          "negated": false,
+          "question": false,
+          "agent_dir": "external",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": null,
+        "tension_level": 0.9377,
+        "tension_type": "suspended",
+        "top_scores": [
+          0.7322,
+          0.7258
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.7753,
+            "emotion_mod": 0.9692,
+            "conversion": 1.0,
+            "competitive_score": 0.7322
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.7686,
+            "emotion_mod": 0.9608,
+            "conversion": 1.0,
+            "competitive_score": 0.7258
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.7192,
+            "emotion_mod": 0.899,
+            "conversion": 1.0,
+            "competitive_score": 0.6792
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.7116,
+            "emotion_mod": 0.8894,
+            "conversion": 1.0,
+            "competitive_score": 0.6719
+          },
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.6562,
+            "emotion_mod": 0.8202,
+            "conversion": 1.0,
+            "competitive_score": 0.6196
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "pronoun",
+      "case_id": "pron_01",
+      "input_text": "我累。",
+      "recognized_words": [
+        [
+          "累",
+          1.0
+        ]
+      ],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "累",
+        "patient": "external",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 0.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.3,
+      "familiarity_coverage": 0.6667,
+      "effective_confidence": 0.5483,
+      "svo": {
+        "subject": "我",
+        "predicate": "累",
+        "object": "",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "external"
+      },
+      "state_references": {
+        "fatigue": 0.08
+      },
+      "pronoun_weights": {
+        "fatigue": 0.05
+      },
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "累",
+          "object": "",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": {
+          "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+          "source_id": "spm_resonance",
+          "experience_id": "spm_∅-倦避孤寂",
+          "confidence": 0.779,
+          "emotion_mod": 0.9738,
+          "conversion": 1.0,
+          "competitive_score": 0.7357
+        },
+        "tension_level": 0.0,
+        "tension_type": "attractor",
+        "top_scores": [
+          0.7357,
+          0.5406
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.779,
+            "emotion_mod": 0.9738,
+            "conversion": 1.0,
+            "competitive_score": 0.7357
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.5724,
+            "emotion_mod": 0.7155,
+            "conversion": 1.0,
+            "competitive_score": 0.5406
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.5401,
+            "emotion_mod": 0.6752,
+            "conversion": 1.0,
+            "competitive_score": 0.5101
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.5013,
+            "emotion_mod": 0.6266,
+            "conversion": 1.0,
+            "competitive_score": 0.4734
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.479,
+            "emotion_mod": 0.5988,
+            "conversion": 1.0,
+            "competitive_score": 0.4524
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "pronoun",
+      "case_id": "pron_02",
+      "input_text": "你累。",
+      "recognized_words": [
+        [
+          "累",
+          1.0
+        ]
+      ],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "累",
+        "patient": "external",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 0.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.3,
+      "familiarity_coverage": 1.0,
+      "effective_confidence": 0.7,
+      "svo": {
+        "subject": "你",
+        "predicate": "累",
+        "object": "",
+        "negated": false,
+        "question": false,
+        "agent_dir": "xia",
+        "patient_dir": "external"
+      },
+      "state_references": {
+        "fatigue": 0.4
+      },
+      "pronoun_weights": {
+        "fatigue": 1.0
+      },
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "累",
+          "object": "",
+          "negated": false,
+          "question": false,
+          "agent_dir": "xia",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": {
+          "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+          "source_id": "spm_resonance",
+          "experience_id": "spm_∅-倦避孤寂",
+          "confidence": 0.779,
+          "emotion_mod": 0.9738,
+          "conversion": 1.0,
+          "competitive_score": 0.7357
+        },
+        "tension_level": 0.0,
+        "tension_type": "attractor",
+        "top_scores": [
+          0.7357,
+          0.5406
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.779,
+            "emotion_mod": 0.9738,
+            "conversion": 1.0,
+            "competitive_score": 0.7357
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.5724,
+            "emotion_mod": 0.7155,
+            "conversion": 1.0,
+            "competitive_score": 0.5406
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.5401,
+            "emotion_mod": 0.6752,
+            "conversion": 1.0,
+            "competitive_score": 0.5101
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.5013,
+            "emotion_mod": 0.6266,
+            "conversion": 1.0,
+            "competitive_score": 0.4734
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.479,
+            "emotion_mod": 0.5988,
+            "conversion": 1.0,
+            "competitive_score": 0.4524
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "pronoun",
+      "case_id": "pron_03",
+      "input_text": "我疼。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "speaker",
+        "predicate": "疼",
+        "patient": "external",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 0.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 0.6667,
+      "effective_confidence": 0.561,
+      "svo": {
+        "subject": "我",
+        "predicate": "疼",
+        "object": "",
+        "negated": false,
+        "question": false,
+        "agent_dir": "speaker",
+        "patient_dir": "external"
+      },
+      "state_references": {
+        "pain": 0.08
+      },
+      "pronoun_weights": {
+        "pain": 0.05
+      },
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 0.0,
+          "other": 1.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "我",
+          "predicate": "疼",
+          "object": "",
+          "negated": false,
+          "question": false,
+          "agent_dir": "speaker",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": {
+          "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+          "source_id": "spm_resonance",
+          "experience_id": "spm_∅-倦避孤寂",
+          "confidence": 0.7577,
+          "emotion_mod": 0.9471,
+          "conversion": 1.0,
+          "competitive_score": 0.7155
+        },
+        "tension_level": 0.0539,
+        "tension_type": "attractor",
+        "top_scores": [
+          0.7155,
+          0.6269
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.7577,
+            "emotion_mod": 0.9471,
+            "conversion": 1.0,
+            "competitive_score": 0.7155
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.6638,
+            "emotion_mod": 0.8298,
+            "conversion": 1.0,
+            "competitive_score": 0.6269
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6517,
+            "emotion_mod": 0.8147,
+            "conversion": 1.0,
+            "competitive_score": 0.6154
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.525,
+            "emotion_mod": 0.6563,
+            "conversion": 1.0,
+            "competitive_score": 0.4958
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.5059,
+            "emotion_mod": 0.6324,
+            "conversion": 1.0,
+            "competitive_score": 0.4777
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    },
+    {
+      "factor": "pronoun",
+      "case_id": "pron_04",
+      "input_text": "你疼。",
+      "recognized_words": [],
+      "social_intent": "unknown",
+      "proposition_frame": {
+        "actor": "xia",
+        "predicate": "疼",
+        "patient": "external",
+        "polarity": "positive",
+        "negation_count": 0,
+        "tense": "unspecified",
+        "modality": "statement",
+        "slot_relevance": {
+          "actor": 1.0,
+          "predicate": 1.0,
+          "patient": 0.0,
+          "tense": 0.0
+        },
+        "slot_confidence": {
+          "actor": 0.95,
+          "predicate": 0.7,
+          "patient": 0.1,
+          "polarity": 0.7,
+          "tense": 0.1,
+          "modality": 0.7
+        }
+      },
+      "construction_match": "",
+      "cx_comprehension": 0.0,
+      "familiarity_coverage": 1.0,
+      "effective_confidence": 0.7162,
+      "svo": {
+        "subject": "你",
+        "predicate": "疼",
+        "object": "",
+        "negated": false,
+        "question": false,
+        "agent_dir": "xia",
+        "patient_dir": "external"
+      },
+      "state_references": {
+        "pain": 0.4
+      },
+      "pronoun_weights": {
+        "pain": 1.0
+      },
+      "input_packet": {
+        "topic_anchor": {},
+        "relational_direction": {
+          "self": 1.0,
+          "other": 0.0,
+          "external": 0.0
+        },
+        "social_intent": {
+          "question": 0.0,
+          "sharing": 0.0,
+          "statement": 0.9999999989999999
+        },
+        "svo": {
+          "subject": "你",
+          "predicate": "疼",
+          "object": "",
+          "negated": false,
+          "question": false,
+          "agent_dir": "xia",
+          "patient_dir": "external"
+        }
+      },
+      "input_drive_layers": [
+        "somatic_keyword",
+        "drive_space"
+      ],
+      "best_symbol": null,
+      "interpretation": {
+        "winner": {
+          "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+          "source_id": "spm_resonance",
+          "experience_id": "spm_∅-倦避孤寂",
+          "confidence": 0.7577,
+          "emotion_mod": 0.9471,
+          "conversion": 1.0,
+          "competitive_score": 0.7155
+        },
+        "tension_level": 0.0539,
+        "tension_type": "attractor",
+        "top_scores": [
+          0.7155,
+          0.6269
+        ],
+        "candidates": [
+          {
+            "interpretation": "内部共鸣'∅-倦避孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-倦避孤寂",
+            "confidence": 0.7577,
+            "emotion_mod": 0.9471,
+            "conversion": 1.0,
+            "competitive_score": 0.7155
+          },
+          {
+            "interpretation": "内部共鸣'∅-孤寂焦滞'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-孤寂焦滞",
+            "confidence": 0.6638,
+            "emotion_mod": 0.8298,
+            "conversion": 1.0,
+            "competitive_score": 0.6269
+          },
+          {
+            "interpretation": "内部共鸣'∅-焦滞好奇'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-焦滞好奇",
+            "confidence": 0.6517,
+            "emotion_mod": 0.8147,
+            "conversion": 1.0,
+            "competitive_score": 0.6154
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇孤寂'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇孤寂",
+            "confidence": 0.525,
+            "emotion_mod": 0.6563,
+            "conversion": 1.0,
+            "competitive_score": 0.4958
+          },
+          {
+            "interpretation": "内部共鸣'∅-好奇渴知'触发",
+            "source_id": "spm_resonance",
+            "experience_id": "spm_∅-好奇渴知",
+            "confidence": 0.5059,
+            "emotion_mod": 0.6324,
+            "conversion": 1.0,
+            "competitive_score": 0.4777
+          },
+          {
+            "interpretation": "经验'∅-好奇渴知'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇渴知",
+            "confidence": 0.5,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.4722
+          },
+          {
+            "interpretation": "经验'∅-倦避孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-倦避孤寂",
+            "confidence": 0.225,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.2125
+          },
+          {
+            "interpretation": "经验'∅-好奇孤寂'匹配",
+            "source_id": "spm_named",
+            "experience_id": "named_∅-好奇孤寂",
+            "confidence": 0.2,
+            "emotion_mod": 0.5,
+            "conversion": 1.0,
+            "competitive_score": 0.1889
+          }
+        ]
+      }
+    }
+  ]
+}

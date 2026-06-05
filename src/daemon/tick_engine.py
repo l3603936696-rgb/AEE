@@ -33,6 +33,7 @@ from ..entity_zero_iteration import (
     get_entity_state,
     run_pipeline,
     run_language_training_tick,
+    process_async_updates,
 )
 from ..action_system import evaluate_triggers, execute_xia_choice
 from ..action_system.types import XIAction
@@ -40,6 +41,7 @@ from ..action_system.reach import read_response
 from ..daemon.ipc_client import IPCClient
 from ..inner_diary import write_diary_entry
 from ..thinking_system.covariance_tracker import CovarianceTracker
+from ..response_cache import ResponseCache
 
 
 logger = logging.getLogger(__name__)
@@ -178,6 +180,7 @@ class TickEngine:
         ipc_server: Optional["IPCServer"] = None,
         llm_callable: Optional[Callable] = None,
         train_only: bool = False,
+        response_cache: Optional[ResponseCache] = None,
     ) -> None:
         self._interval = tick_interval
         self._entity = entity_state
@@ -192,6 +195,10 @@ class TickEngine:
         self._covariance_tracker: Optional[CovarianceTracker] = None
         self._last_tension_total = 0.0
         self._sibling_channel = None  # 懒加载
+        self._response_cache = response_cache
+        self._async_loop: Optional["asyncio.AbstractEventLoop"] = None
+        self._async_thread: Optional[threading.Thread] = None
+        self._async_running = False
 
     @property
     def entity(self) -> EntityState:
@@ -381,6 +388,80 @@ class TickEngine:
             except Exception as e:
                 logger.debug(f"[TickEngine] sibling poll failed: {e}")
 
+        # ---- 表达反馈闭环（洞③多通道）：sibling/external 输入也结算挂账意图 ----
+        # IPC 聊天在 daemon._handle_chat 已调；此处补齐 tick 循环读到的输入通道。
+        # 用 BGE 相关度的句式/社交信用（洞①），不依赖新置信度，可输入前内联。
+        if user_input:
+            try:
+                from ..language_system.expression_feedback import consume_response
+                consume_response(self.entity, user_input, self.entity.tick)
+            except Exception as _cr_err:
+                logger.debug(f"[TickEngine] consume_response skipped: {_cr_err}")
+
+        # ---- 澄清归属观察（clarification_learning v2）：仅 external 来源参与归属 ----
+        # sibling 回答一律忽略，不当 Owner 回答（Codex P2-b / R2-external）。
+        # external event_id = SHA-256(source + response_data.timestamp + user_input)。
+        if _input_source == "external" and user_input:
+            import hashlib as _hashlib
+            _ext_event_id = _hashlib.sha256(
+                ("external" + str(response_data.get("timestamp", 0.0)) + user_input).encode("utf-8")
+            ).hexdigest()
+            try:
+                from ..language_system.clarification_learning import observe_reply
+                observe_reply(
+                    self.entity,
+                    reply_text=user_input,
+                    now_ts=time.time(),
+                    source="external",
+                    reply_event_id=_ext_event_id,
+                )
+            except Exception as _ob_err:
+                logger.debug(f"[TickEngine] clarification observe skipped: {_ob_err}")
+
+        # ---- 环境状态向量 tick 衰减（patch-02-二）----
+        try:
+            _env = getattr(self.entity, "_environment_vector", None)
+            if _env is None:
+                _env = {"semantic_residue": {}, "social_prediction_tension": 0.0, "physical": {}}
+                self.entity._environment_vector = _env
+            # 语义残留：指数衰减 0.8/tick，衰减到 0.001 以下时清除
+            _sem = _env.get("semantic_residue", {})
+            for _src in list(_sem.keys()):
+                _sem[_src] = _sem[_src] * 0.8
+                if _sem[_src] < 0.001:
+                    del _sem[_src]
+            _env["semantic_residue"] = _sem
+            # 社交预测张力：沉默时线性累积，对数饱和（上限 5.0）
+            _MAX_SPT = 5.0
+            _spt = float(_env.get("social_prediction_tension", 0.0))
+            _spt = min(_MAX_SPT, _spt + 1.0 * (1.0 - _spt / _MAX_SPT))
+            _env["social_prediction_tension"] = _spt
+        except Exception:
+            pass
+
+        # ---- 输出因果追踪 Step 2：关闭上次输出的因果观察 ----
+        try:
+            _poc = getattr(self.entity, "_pending_output_causal", None)
+            if _poc:
+                _snap = _poc["state_snapshot"]
+                _out_delta = {
+                    "loneliness": float(getattr(self.entity, "loneliness", 0.0)) - _snap["loneliness"],
+                    "stress":     float(getattr(self.entity, "stress", 0.0))     - _snap["stress"],
+                    "unresolved": float(getattr(self.entity, "unresolved", 0.0)) - _snap["unresolved"],
+                    "fatigue":    float(getattr(self.entity, "fatigue", 0.0))    - _snap["fatigue"],
+                }
+                _obs = getattr(self.entity, "_causal_observations", [])
+                _obs.append({
+                    "tick":        _poc["tick"],
+                    "source":      "output",
+                    "action_type": _poc["action_type"],
+                    "delta":       _out_delta,
+                })
+                self.entity._pending_output_causal = {}
+                logger.debug(f"[OutputCausal] closed tick={_poc['tick']} delta={_out_delta}")
+        except Exception:
+            pass
+
         try:
             # 根据是否有用户输入决定调用方式
             if user_input:
@@ -400,6 +481,215 @@ class TickEngine:
                     daemon_mode=True,
                 )
             self._tick_count += 1
+
+            # ---- 异步经验处理：TetraMem + 世界模型更新闭环（fire-and-forget）----
+            try:
+                _state_snap = self.entity.to_state_snapshot()
+                _exp_log = type("EL", (), {
+                    "content": str(result.get("response", {}).get("text", "")),
+                    "tags": [f"action:{result.get('decision', {}).get('action_type', '')}"],
+                    "weight": 1.0,
+                })()
+                _snap_obj = type("SS", (), {
+                    "fatigue": float(getattr(self.entity, "fatigue", 0.0)),
+                    "stress": float(getattr(self.entity, "stress", 0.0)),
+                })()
+                self._submit_async(
+                    process_async_updates(
+                        experience_log=_exp_log,
+                        state_snapshot=_snap_obj,
+                        entity_id="XIA",
+                        entity=self.entity,
+                        param_snapshot=None,
+                    )
+                )
+            except Exception as _async_err:
+                logger.debug(f"[TickEngine] process_async_updates skip: {_async_err}")
+
+            # ---- 姐妹通道词汇反馈：听懂的词积累社交猝灭信用 ----
+            if _input_source == "sibling":
+                try:
+                    from ..language_system.word_warmup import add_social_comprehension
+                    _cx_words = result.get("cx_recognized_words", [])
+                    _cx_comp = float(result.get("cx_comprehension", 0.0))
+                    _SIBLING_QUENCH_WEIGHT = 0.4
+                    if _cx_words and _cx_comp > 0.3:
+                        from ..language_system.word_warmup import resonate_with_word
+                        for _w, _s in _cx_words:
+                            add_social_comprehension(
+                                self.entity, _w,
+                                _cx_comp * _SIBLING_QUENCH_WEIGHT,
+                            )
+                            resonate_with_word(self.entity, _w, _cx_comp)
+                        logger.info(
+                            f"[SiblingChannel] social credit+resonance: comp={_cx_comp:.2f} "
+                            f"words={[w for w, _ in _cx_words]}"
+                        )
+                except Exception as _sc_err:
+                    logger.debug(f"[SiblingChannel] social credit skipped: {_sc_err}")
+
+            # ---- 刻板印象树：异步 fork 检查（每 10 tick 一次）----
+            if self._tick_count % 10 == 0:
+                try:
+                    from ..language_system.stereotype_tree import ensure_tree
+                    from itertools import combinations
+                    tree = ensure_tree(self.entity)
+                    # 检查所有同父节点的个体对
+                    checked_pairs = set()
+                    for speaker_id, node in list(tree._individuals.items()):
+                        parent_path = "/".join(node.path.strip("/").split("/")[:-1])
+                        # 找同父节点的其他个体
+                        for other_id, other_node in tree._individuals.items():
+                            if other_id == speaker_id:
+                                continue
+                            other_parent = "/".join(other_node.path.strip("/").split("/")[:-1])
+                            if other_parent != parent_path:
+                                continue
+                            pair = tuple(sorted([speaker_id, other_id]))
+                            if pair in checked_pairs:
+                                continue
+                            checked_pairs.add(pair)
+                            # 获取最近特征
+                            feat_a = self.entity._recent_speaker_features.get(speaker_id, {})
+                            feat_b = self.entity._recent_speaker_features.get(other_id, {})
+                            if not feat_a or not feat_b:
+                                continue
+                            fork_result = tree.check_and_fork(speaker_id, other_id, feat_a, feat_b)
+                            if fork_result:
+                                logger.info(
+                                    f"[StereotypeFork] forked {speaker_id} vs {other_id}: "
+                                    f"label={fork_result['fork_label']}, "
+                                    f"removed={fork_result['removed_tags']}"
+                                )
+                except Exception as _fork_err:
+                    logger.debug(f"[StereotypeFork] async check skipped: {_fork_err}")
+
+            # ---- 他者建模：更新来源 profile ----
+            _src_id = "none"
+            if _input_source != "none":
+                try:
+                    from ..language_system.source_profiler import get_source_id, update_profile
+                    _src_id = get_source_id(_input_source, self.entity)
+                    _obs = self.entity._causal_observations
+                    _last_delta = _obs[-1]["delta"] if _obs else {}
+                    update_profile(
+                        self.entity,
+                        _src_id,
+                        result.get("cx_recognized_words", []),
+                        result.get("cx_social_intent", "unknown"),
+                        _last_delta,
+                        self.entity.tick,
+                    )
+                    logger.debug(f"[SourceProfiler] updated profile for {_src_id}")
+                except Exception as _sp_err:
+                    logger.debug(f"[SourceProfiler] update skipped: {_sp_err}")
+
+            # ---- 环境状态向量：有输入时注入语义残留 + 重置社交预测张力 ----
+            if _src_id != "none":
+                try:
+                    _env = getattr(self.entity, "_environment_vector", {})
+                    _sem = _env.setdefault("semantic_residue", {})
+                    _sem[_src_id] = min(1.0, _sem.get(_src_id, 0.0) + 1.0)
+                    _env["social_prediction_tension"] = 0.0
+                    self.entity._environment_vector = _env
+                except Exception:
+                    pass
+
+            # ---- 回复动机：注入 approach_social（有来源输入时）----
+            if _src_id != "none":
+                try:
+                    from ..language_system.reply_motivator import inject_reply_drive
+                    _injected = inject_reply_drive(
+                        self.entity,
+                        _src_id,
+                        result.get("cx_social_intent", "unknown"),
+                    )
+                    logger.debug(f"[ReplyMotivator] injected {_injected:.4f} → approach_social={self.entity.approach_social:.4f}")
+                except Exception as _rm_err:
+                    logger.debug(f"[ReplyMotivator] skipped: {_rm_err}")
+
+            # ---- 他者建模层三：familiarity 调制 loneliness_core 增速 ----
+            try:
+                import math as _math
+                from ..language_system.source_profiler import get_familiarity as _get_fam
+                _profiles = getattr(self.entity, "_source_profiles", {})
+                _cur_tick = self.entity.tick
+                _best_fam_decayed = 0.0
+                for _sid, _prof in _profiles.items():
+                    _ticks_ago = _cur_tick - _prof.get("last_tick", 0)
+                    _fam = _get_fam(self.entity, _sid)
+                    _fam_d = _fam * _math.exp(-_ticks_ago / 20.0)
+                    _best_fam_decayed = max(_best_fam_decayed, _fam_d)
+                _suppression = _best_fam_decayed * 0.4 * 0.001
+                _lc = float(getattr(self.entity, "loneliness_core", 0.0))
+                self.entity.loneliness_core = max(0.0, _lc - _suppression)
+            except Exception as _l3_err:
+                logger.debug(f"[SourceProfiler L3] skipped: {_l3_err}")
+
+            # ---- 输出因果追踪 Step 1：记录本次输出快照 ----
+            try:
+                _out_text = result.get("response", {}).get("text", "")
+                if _out_text:
+                    self.entity._pending_output_causal = {
+                        "tick": self.entity.tick,
+                        "action_type": result.get("decision", {}).get("action_type", "unknown"),
+                        "state_snapshot": {
+                            "loneliness": float(getattr(self.entity, "loneliness", 0.0)),
+                            "stress":     float(getattr(self.entity, "stress", 0.0)),
+                            "unresolved": float(getattr(self.entity, "unresolved", 0.0)),
+                            "fatigue":    float(getattr(self.entity, "fatigue", 0.0)),
+                        },
+                    }
+            except Exception:
+                pass
+
+            # ---- Response pre-warming: cache this tick's drive vector + response text ----
+            try:
+                _dv   = result.get("drive_vector", {})
+                _text = result.get("response", {}).get("text", "")
+                _tick = result.get("tick", self._entity.tick)
+                has_cache = min(1.0, float(self._response_cache is not None))
+                has_dv    = min(1.0, float(bool(_dv)))
+                store_w   = has_cache * has_dv
+                skip_w    = 1.0 - min(1.0, store_w)
+                max(
+                    {
+                        "store": (store_w, lambda: self._response_cache.update(_dv, _text, _tick)),
+                        "skip":  (skip_w,  lambda: None),
+                    }.items(),
+                    key=lambda kv: kv[1][0],
+                )[1][1]()
+            except Exception as _cache_err:
+                logger.debug(f"[TickEngine] response_cache update skipped: {_cache_err}")
+
+            # ---- 表达反馈闭环（模块A）：给本 tick 的自主表达挂账意图 ----
+            # 她因内部驱动力说了一句话，这是 action；用户回应是 outcome（见 daemon._handle_chat）
+            try:
+                from ..language_system.expression_feedback import tag_intent
+                _expr = result.get("response", {}).get("text", "")
+                _expr_tick = result.get("tick", self.entity.tick)
+                tag_intent(self.entity, _expr, _expr_tick)
+            except Exception as _intent_err:
+                logger.debug(f"[TickEngine] tag_intent skipped: {_intent_err}")
+
+            # ---- 自我开导（自欺式保底贷款）：她自我表达时即时支取一笔表层缓解 ----
+            # 与 tag_intent 同址（自主表达拍）。无人回应也支取（即时无条件，见
+            # PLAN_self_counsel §5）；若稍后真有 Other 回应，②consume_response 再叠加诚实奖励。
+            try:
+                from ..language_system.self_counsel import apply_self_counsel
+                _sc_expr = result.get("response", {}).get("text", "")
+                _sc_tick = result.get("tick", self.entity.tick)
+                apply_self_counsel(self.entity, _sc_expr, _sc_tick)
+            except Exception as _sc_err:
+                logger.debug(f"[TickEngine] apply_self_counsel skipped: {_sc_err}")
+
+            # ---- 认知信用结算（洞②）：异步 WM 跑过 verify 后，结算到期的认知信用 ----
+            # 每拍扫一次 _pending_epistemic_credit，到期（age>=_SETTLE_DELAY）的才结算。
+            try:
+                from ..language_system.expression_feedback import settle_epistemic_credit
+                settle_epistemic_credit(self.entity, self.entity.tick)
+            except Exception as _settle_err:
+                logger.debug(f"[TickEngine] settle_epistemic_credit skipped: {_settle_err}")
 
             # ---- 协方差追踪器：记录本 tick 的状态 + 预测误差 ----
             try:
@@ -452,6 +742,27 @@ class TickEngine:
                                 pass
             except Exception as _read_err:
                 logger.debug(f"[TickEngine] Reading intake skipped: {_read_err}")
+
+            # ---- 阅读句式提取：rest/comfort 行为时从阅读历史提取构式模板 ----
+            try:
+                from ..language_system.sentence_extraction import _extract_sentence_patterns
+                _action_type = result.get("decision", {}).get("action_type", "")
+                _extracted = _extract_sentence_patterns(self.entity, _action_type)
+                if _extracted > 0:
+                    logger.info(f"[TickEngine] Sentence extraction: {_extracted} schemas from reading")
+            except Exception as _se_err:
+                logger.debug(f"[TickEngine] Sentence extraction skip: {_se_err}")
+
+            # ---- 内部符号涌现（StatePatternMemory）----
+            try:
+                from ..language_system.state_pattern_memory import run_symbol_tick
+                _spm_dv   = result.get("drive_vector", {})
+                _spm_tick = result.get("tick", self.entity.tick)
+                _new_syms = run_symbol_tick(self.entity, _spm_dv, _spm_tick)
+                if _new_syms:
+                    logger.info(f"[StatePatternMemory] 锻造内部符号: {_new_syms}")
+            except Exception as _spm_err:
+                logger.debug(f"[StatePatternMemory] skipped: {_spm_err}")
 
             # ---- 世界模型归纳（每 10 entity tick，快照 >= 5 时触发）----
             if self.entity.tick % 10 == 0:
@@ -657,16 +968,17 @@ class TickEngine:
             if _pipeline_text and len(_pipeline_text) <= 20:
                 self.entity._training_override = _pipeline_text
 
-            # ---- 姐妹通道：只发 anchor 表达，叙事是自言自语不发 ----
-            # anchor confidence=0.85, narrative confidence=0.80
+            # ---- 姐妹通道：anchor 表达发出，叙事是自言自语不发 ----
+            # anchor_weight=1.0 → anchor 赢；0.0 → narrative 赢（连续门控，无比较运算符）
             if _pipeline_text and self.sibling_channel:
                 _resp = result.get("response", {})
-                _is_anchor = _resp.get("confidence", 0) > 0.82
-                if _is_anchor:
+                _anchor_weight = float(_resp.get("anchor_weight", 0.0))
+                for _ in range(int(round(_anchor_weight))):
                     try:
                         self.sibling_channel.post(_pipeline_text, tick=self.entity.tick)
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug(f"[SiblingChannel] post failed: {_e}")
+                        break
 
             # ---- 行为驱动的触发检查 ----
             # 触发强度是连续值，没有阈值。强度 > 0 就执行。
@@ -772,6 +1084,45 @@ class TickEngine:
             except Exception as e:
                 logger.debug(f"[TickEngine] inner_diary write skipped: {e}")
 
+            # ---- 反刍层：每 N tick 用 LLM 当镜子做深度复盘 ----
+            # LLM 是工具不是说话者；输出结构化调整回写到状态/心事/自我叙事
+            try:
+                from ..language_system.reflection_layer import should_reflect, reflect
+                if should_reflect(self.entity):
+                    _r = reflect(self.entity)
+                    if _r.get("applied"):
+                        _narr = (self.entity._self_narrative or "")[:40]
+                        logger.info(f"[Reflection] t={self.entity.tick} applied, narrative='{_narr}'")
+                    else:
+                        logger.debug(f"[Reflection] t={self.entity.tick} skipped: {_r.get('reason','')}")
+            except Exception as _e:
+                logger.debug(f"[Reflection] error: {_e}")
+
+            # ---- I-JEPA：每 tick 一步在线学习（掩码状态预测，学习内部结构）----
+            # 轻量，纯 numpy，约 <1ms；失败不影响主 tick
+            try:
+                from ..jepa.i_jepa import get_i_jepa
+                _err = get_i_jepa().step(self.entity)
+                logger.debug(f"[I-JEPA] t={self.entity.tick} recon_err={_err:.4f}")
+            except Exception as _e:
+                logger.debug(f"[I-JEPA] error: {_e}")
+
+            # ---- V-JEPA：每 ~200 tick 短时总结（时序预测，产出 surprise_density）----
+            # surprise_density 写入 entity._jepa_surprise_density 供 pipeline_runner 使用
+            try:
+                from ..jepa.v_jepa import get_v_jepa
+                _vj = get_v_jepa()
+                if _vj.should_run(self.entity):
+                    _vr = _vj.summarize(self.entity)
+                    if _vr.get("applied"):
+                        logger.info(
+                            f"[V-JEPA] t={self.entity.tick} "
+                            f"surprise={_vr.get('surprise_density', 0):.3f} "
+                            f"transitions={len(_vr.get('transition_ticks', []))}"
+                        )
+            except Exception as _e:
+                logger.debug(f"[V-JEPA] error: {_e}")
+
             return {
                 "tick_index": result.get("tick", self.entity.tick),
                 "energy": self.entity.energy,
@@ -810,7 +1161,36 @@ class TickEngine:
         self._start_time = time.time()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
+        self._start_async_loop()
         logger.info(f"[TickEngine] started (interval={self._interval}s)")
+
+    # ── 异步事件循环（供 process_async_updates 使用）──────────────────────────────────
+    def _start_async_loop(self) -> None:
+        """启动专用异步线程，运行事件循环。"""
+        if self._async_running:
+            return
+        self._async_running = True
+
+        def _run():
+            import asyncio as _asyncio
+            self._async_loop = _asyncio.new_event_loop()
+            _asyncio.set_event_loop(self._async_loop)
+            self._async_loop.run_forever()
+            self._async_loop.close()
+
+        self._async_thread = threading.Thread(target=_run, daemon=True)
+        self._async_thread.start()
+        logger.info("[TickEngine] async loop started")
+
+    def _submit_async(self, coro) -> None:
+        """向异步线程提交协程（fire-and-forget）。"""
+        if self._async_loop is None or not self._async_running:
+            return
+        import asyncio as _asyncio
+        try:
+            _asyncio.run_coroutine_threadsafe(coro, self._async_loop)
+        except Exception as e:
+            logger.debug(f"[TickEngine] async submit failed: {e}")
 
     def stop(self) -> None:
         """停止后台 tick 线程"""

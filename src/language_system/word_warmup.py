@@ -65,6 +65,65 @@ def _unlock_word(entity, word: str):
         logger.info(f"[WordWarmup] 永久解锁: {word}")
 
 
+# drive_state_hash 解码表（桶标签 → 区间中值）
+# 与 quenching.py 的 _hash_state 对应
+_COARSE_MID: Dict[str, float] = {"L": 0.1, "ML": 0.3, "M": 0.5, "MH": 0.7, "H": 0.9}
+_FINE_MID: Dict[str, float] = {
+    "vL": 0.05, "L": 0.15, "LM": 0.25, "M": 0.35, "MH": 0.45,
+    "H": 0.55, "H+": 0.65, "VH": 0.75, "VH+": 0.85, "MAX": 0.95,
+}
+# 使用细粒度桶的维度（与 quenching.py._hash_state 保持一致）
+_FINE_KEYS = frozenset({"danger_level", "fatigue", "stress", "pain", "unresolved", "relief_debt"})
+
+
+def _decode_state_hash(state_hash: str) -> Dict[str, float]:
+    """将 quenching 的 drive_state_hash 字符串解码为近似状态 dict。
+
+    格式示例：'fatigue=MH|loneliness=L|curiosity=H'
+    返回：{'fatigue': 0.45, 'loneliness': 0.1, 'curiosity': 0.9}
+    （fatigue 是 fine key，MH→0.45；loneliness/curiosity 是 coarse key，L→0.1，H→0.9）
+    """
+    if not state_hash:
+        return {}
+    result: Dict[str, float] = {}
+    for part in state_hash.split("|"):
+        if "=" not in part:
+            continue
+        key, bucket = part.split("=", 1)
+        table = _FINE_MID if key in _FINE_KEYS else _COARSE_MID
+        val = table.get(bucket)
+        if val is not None:
+            result[key] = val
+    return result
+
+
+def _build_word_profile(entity, word: str) -> Dict[str, float]:
+    """
+    从 quenching records 聚合词的状态画像。
+
+    对所有含该词的记录，解码 drive_state_hash 得到近似状态，取均值。
+    结果是"她遇到这个词时通常处于什么状态"——reading 共现的积累。
+    """
+    quench_data = getattr(entity, "_quenching_data", None)
+    records = quench_data.get("records", []) if quench_data else []
+
+    state_sums: Dict[str, float] = {}
+    count = 0
+    for r in records:
+        if r.get("expression") != word:
+            continue
+        decoded = _decode_state_hash(r.get("drive_state_hash", ""))
+        if not decoded:
+            continue
+        for dim, val in decoded.items():
+            state_sums[dim] = state_sums.get(dim, 0.0) + val
+        count += 1
+
+    if count == 0:
+        return {}
+    return {dim: v / count for dim, v in state_sums.items()}
+
+
 def get_word_stats(entity) -> Dict[str, Dict[str, float]]:
     """
     从 entity 的消力记录中提取每个词的统计：
@@ -125,6 +184,21 @@ def get_warm_words(
         warm.append(word)
         # 永久解锁（去重自动处理）
         _unlock_word(entity, word)
+        # 如果 _warm_words 里还没有状态画像，从 quenching records 聚合一个
+        # 这是 reading 共现数据真正被使用的地方
+        _wm = getattr(entity, "_warm_words", None)
+        if _wm is None:
+            entity._warm_words = {}
+            _wm = entity._warm_words
+        if word not in _wm:
+            _profile = _build_word_profile(entity, word)
+            if _profile:
+                _wm[word] = {
+                    "profile": _profile,
+                    "acquired_tick": current_tick,
+                    "source": "reading",
+                }
+                logger.info(f"[WordWarmup] 状态画像: {word} → {list(_profile.keys())}")
     
     # 2) 永久词汇表中的词直接保持暖词（不依赖消力窗口时效）
     #    已解锁 = 持久化确认过"这个词在多种身体状态下被匹配过"。
@@ -230,6 +304,14 @@ def inject_warmup_candidates(
         logger.debug(f"[WordWarmup] failed: {e}")
 
     return current_candidates
+
+
+# add_social_comprehension 和 resonate_with_word 已迁移到 social_comprehension.py，
+# 此处重新导出保持调用方兼容。
+from .social_comprehension import (  # noqa: E402, F401
+    add_social_comprehension,
+    resonate_with_word,
+)
 
 
 # ============================================================================

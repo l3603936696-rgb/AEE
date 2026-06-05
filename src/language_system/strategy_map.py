@@ -277,7 +277,15 @@ class StrategyMap:
                 "contexts": list(entry.contexts),
                 "confidence": min(1.0, entry.hit_count / 10),
             }
-            wm_db.upsert_rule(rule)
+            wm_db[:] = [
+                r for r in wm_db
+                if not (
+                    r.get("type") == "language_strategy"
+                    and r.get("from_state") == rule["from_state"]
+                    and r.get("to_state") == rule["to_state"]
+                )
+            ]
+            wm_db.append(rule)
             return rule
         except Exception as e:
             logger.warning(f"[StrategyMap] upgrade_to_wm_rule failed: {e}")
