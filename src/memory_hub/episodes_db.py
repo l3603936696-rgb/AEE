@@ -28,15 +28,14 @@ Episodes DB — 原始事件日志持久化层
 
 import json
 import logging
-import math
 import os
-import re
 import sqlite3
-from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from .episodes_search import _tokenize, _compute_tf, _compute_idf, _cosine
 
 logger = logging.getLogger(__name__)
 
@@ -400,87 +399,6 @@ def get_episodes_for_induction(
         return []
 
 
-# ============================================================================
-# 语义相似召回 — TF-IDF + 余弦相似度
-# ============================================================================
-
-def _tokenize(text: str) -> List[str]:
-    """
-    中文 + 英文分词，返回词级 token 和字 bigram。
-
-    策略：
-    - 英文/数字：按空格拆分，保留长度>=2 的词
-    - 中文词：提取连续汉字序列（长度>=2）
-    - 中文 bigram：逐字生成 bigram，捕捉单字相似性
-    - 停用词过滤（词级 token）
-    """
-    if not text:
-        return []
-    text = text.replace("\u3000", " ").replace("　", " ")
-
-    tokens: list[str] = []
-
-    # 英文/数字词
-    for part in re.split(r"[^\w]+", text.lower()):
-        if part and len(part) >= 2 and part.isalpha():
-            tokens.append(part)
-
-    # 中文词：连续汉字序列（长度>=2）
-    chinese_seqs = re.findall(r"[\u4e00-\u9fff]{2,}", text)
-    stopwords = {
-        "一个", "这个", "那个", "什么", "怎么", "为什么",
-        "没有", "不是", "都是", "还是", "可以", "已经",
-        "现在", "就是", "然后", "但是", "所以", "因为",
-        "如果", "虽然", "或者", "以及", "而且", "只是",
-        "的时候", "一下", "什么", "怎么", "没有",
-    }
-    for seq in chinese_seqs:
-        if seq not in stopwords:
-            tokens.append(seq)
-        # 同时生成 bigram（短词也能捕捉）
-        for i in range(len(seq) - 1):
-            tokens.append(seq[i : i + 2])
-
-    return tokens
-
-
-def _compute_tf(tokens: List[str]) -> Dict[str, float]:
-    """计算词频 TF。"""
-    if not tokens:
-        return {}
-    counts = Counter(tokens)
-    total = len(tokens)
-    return {word: count / total for word, count in counts.items()}
-
-
-def _compute_idf(documents: List[List[str]]) -> Dict[str, float]:
-    """计算逆文档频率 IDF。N = 文档总数，df = 包含该词的文档数。"""
-    n = len(documents)
-    if n == 0:
-        return {}
-    df: Counter = Counter()
-    for tokens in documents:
-        for word in set(tokens):
-            df[word] += 1
-    return {
-        word: math.log(n / (df[word] + 1)) + 1.0
-        for word in df
-    }
-
-
-def _cosine(a: Dict[str, float], b: Dict[str, float]) -> float:
-    """计算两个 TF-IDF 向量的余弦相似度。"""
-    common = set(a.keys()) & set(b.keys())
-    if not common:
-        return 0.0
-    dot = sum(a[w] * b[w] for w in common)
-    norm_a = math.sqrt(sum(v * v for v in a.values()))
-    norm_b = math.sqrt(sum(v * v for v in b.values()))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
 def retrieve_episodes_by_text(
     query: str,
     limit: int = 3,
@@ -488,24 +406,15 @@ def retrieve_episodes_by_text(
     exclude_iteration_id: Optional[int] = None,
 ) -> List[Episode]:
     """
-    基于用户输入文本，从 episodes 表中召回语义相似的经验。
+    Recall semantically similar episodes using local TF-IDF cosine similarity.
 
-    使用 TF-IDF + 余弦相似度，无需外部嵌入服务。
-
-    参数：
-        query               : 用户输入文本
-        limit               : 最多返回条数
-        min_similarity      : 最低相似度阈值（低于此值不返回）
-        exclude_iteration_id : 排除的 iteration_id（通常传当前轮次，避免召回自己）
-
-    返回：
-        List[Episode] : 按相似度降序排列
+    This keeps the public API in episodes_db while the tokenizer/vector helpers
+    live in episodes_search.py.
     """
     try:
         init_db()
         conn = _get_conn()
 
-        # 查询所有有 raw_input 的 episodes
         rows = conn.execute(
             """
             SELECT * FROM episodes
@@ -514,60 +423,51 @@ def retrieve_episodes_by_text(
             LIMIT 200
             """,
         ).fetchall()
-
         if not rows:
             return []
 
-        # 排除当前轮次
         candidates = [
-            r for r in rows
-            if exclude_iteration_id is None or int(r["iteration_id"]) != exclude_iteration_id
+            row for row in rows
+            if exclude_iteration_id is None
+            or int(row["iteration_id"]) != exclude_iteration_id
         ]
         if not candidates:
             return []
 
-        # 构建语料库
         corpus: List[List[str]] = []
         episode_map: Dict[int, sqlite3.Row] = {}
-        for r in candidates:
-            idx = int(r["iteration_id"])
-            episode_map[idx] = r
-            tokens = _tokenize(str(r["raw_input"] or ""))
-            corpus.append(tokens)
+        for row in candidates:
+            idx = int(row["iteration_id"])
+            episode_map[idx] = row
+            corpus.append(_tokenize(str(row["raw_input"] or "")))
 
-        # 查询文本分词
         query_tokens = _tokenize(query)
         if not query_tokens:
             return []
-        query_tf = _compute_tf(query_tokens)
-        query_idf = _compute_idf(corpus)
 
-        # 计算查询的 TF-IDF
-        query_tfidf: Dict[str, float] = {
-            word: query_tf[word] * query_idf.get(word, 1.0)
+        query_tf = _compute_tf(query_tokens)
+        idf = _compute_idf(corpus)
+        query_vec = {
+            word: query_tf[word] * idf.get(word, 1.0)
             for word in query_tf
         }
 
-        # 计算每条记录的相似度
-        scored: List[Tuple[float, int]] = []  # (similarity, iteration_id)
+        scored: List[Tuple[float, int]] = []
         for idx, tokens in zip(episode_map.keys(), corpus):
             if not tokens:
                 continue
             doc_tf = _compute_tf(tokens)
-            doc_tfidf = {word: doc_tf[word] * query_idf.get(word, 1.0) for word in doc_tf}
-            sim = _cosine(query_tfidf, doc_tfidf)
+            doc_vec = {word: doc_tf[word] * idf.get(word, 1.0) for word in doc_tf}
+            sim = _cosine(query_vec, doc_vec)
             if sim >= min_similarity:
                 scored.append((sim, idx))
 
-        scored.sort(key=lambda x: x[0], reverse=True)
-        top_ids = [idx for _, idx in scored[:limit]]
-
-        return [_row_to_episode(episode_map[idx]) for idx in top_ids]
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [_row_to_episode(episode_map[idx]) for _, idx in scored[:limit]]
 
     except Exception as e:
         logger.warning(f"[EpisodesDB] retrieve_episodes_by_text failed: {e}")
         return []
-
 
 # ============================================================================
 # 统计 & 维护
