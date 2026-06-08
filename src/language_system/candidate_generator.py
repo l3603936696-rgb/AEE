@@ -201,8 +201,8 @@ class CandidateGenerator:
             候选表达列表
         """
         try:
-            from ..llm import create_llm_callable
-            llm = create_llm_callable()
+            from ..observability import create_wrapped_llm
+            llm = create_wrapped_llm("candidate_generator")
 
             avoid = drive_state.get("avoid_drive", drive_state.get("avoid", 0.3))
             approach = drive_state.get("approach_drive", drive_state.get("approach", 0.5))

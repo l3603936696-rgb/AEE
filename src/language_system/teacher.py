@@ -17,6 +17,7 @@ from typing import Optional
 import numpy as np
 
 from .teacher_lexicon import TEACHER_LEXICON
+from ..observability import observe
 
 # === 常量 ===
 MIN_TEACH_STRENGTH = 0.25
@@ -136,6 +137,7 @@ def should_teach(state) -> float:
     return float(np.clip(raw, 0.0, 1.0))
 
 
+@observe("teacher", category="language")
 def make_teaching(state) -> Optional[dict]:
     """
     主入口。组合以上函数，返回教学内容或 None（强度太低时）。

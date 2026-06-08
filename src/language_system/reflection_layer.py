@@ -23,6 +23,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..observability import observe
+
 logger = logging.getLogger(__name__)
 
 
@@ -68,6 +70,7 @@ def should_reflect(entity: Any) -> bool:
 # 主反刍流程
 # ============================================================================
 
+@observe("reflection_layer", category="language")
 def reflect(entity: Any) -> Dict[str, Any]:
     """
     复盘最近的对话，应用调整到 entity。
@@ -105,8 +108,8 @@ def reflect(entity: Any) -> Dict[str, Any]:
 
     # 3. 调 LLM
     try:
-        from ..llm import create_llm_callable
-        llm = create_llm_callable()
+        from ..observability import create_wrapped_llm
+        llm = create_wrapped_llm("reflection_layer")
         text, err = llm(
             system_prompt=sys_prompt,
             user_prompt=user_prompt,

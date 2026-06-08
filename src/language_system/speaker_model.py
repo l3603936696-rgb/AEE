@@ -19,6 +19,8 @@
 import math
 from typing import Any
 
+from ..observability import observe
+
 # ── 超参数 ────────────────────────────────────────────────────────────────────
 # 陌生人基线信任（无节点、无历史时的默认值）
 STRANGER_TRUST: float = 0.40
@@ -47,6 +49,7 @@ MAX_TRUST: float = 0.92
 
 # ── 公开接口 ──────────────────────────────────────────────────────────────────
 
+@observe("speaker_model", category="language")
 def get_trust_weight(entity: Any, speaker_id: str) -> float:
     """
     计算说话者信任权重 ∈ [MIN_TRUST, MAX_TRUST]。

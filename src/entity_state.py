@@ -1049,6 +1049,7 @@ class EntityState:
                 "relief_debt": self.relief_debt,
                 "pain": self.pain,
                 "info_gap": self.info_gap,
+                "curiosity": self.curiosity,
                 "time_since_last_info": self.time_since_last_info,
                 "time_since_last_social": self.time_since_last_social,
                 "external_change_rate": self.external_change_rate,
@@ -1210,6 +1211,7 @@ class EntityState:
             self.relief_debt = float(data.get("relief_debt", 0.0))
             self.pain = float(data.get("pain", 0.0))
             self.info_gap = float(data.get("info_gap", 0.5))
+            self.curiosity = float(data.get("curiosity", 0.5))
             self.time_since_last_info = float(data.get("time_since_last_info", 0.0))
             self.time_since_last_social = float(data.get("time_since_last_social", 0.0))
             self.external_change_rate = float(data.get("external_change_rate", 0.0))

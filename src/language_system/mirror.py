@@ -123,8 +123,8 @@ class MirrorLearner:
             她版本的语义描述字符串
         """
         try:
-            from ..llm import create_llm_callable
-            llm = create_llm_callable()
+            from ..observability import create_wrapped_llm
+            llm = create_wrapped_llm("mirror")
 
             prompt = (
                 f"以下词语在高孤独感、低能量、负面情绪状态下的内在含义是什么？"

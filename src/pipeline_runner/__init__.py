@@ -21,6 +21,7 @@ from .stages import s04a_meta, s04b_emerge, s05_behavior
 from .stages import s06_language
 from .stages import s07a_state_update, s07b_persist, s07c_language_finalize
 from ..language_system.interpretation_competition import run_interpretation_stage
+from ..observability import get_registry, observe
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ def run_pipeline(
     debug: bool = False,
     daemon_mode: bool = False,
     no_llm: bool = False,
+    source_identity: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """
     同步管线主入口。
@@ -59,6 +61,7 @@ def run_pipeline(
         debug           : 是否打印调试追踪
         daemon_mode     : 后台 tick 模式，跳过 LLM 输出步骤
         no_llm          : 对话模式跳过 LLM，强制走锚点/叙事路径（v11.6）
+        source_identity : 来源身份包（speaker_id/content_origin/source_id）
 
     返回：
         {
@@ -74,6 +77,11 @@ def run_pipeline(
     t0 = time.time()
     entity = entity_state or get_entity_state()
     trace: List[PipelineTrace] = []
+
+    # 可观测性：同步当前 tick 到注册表
+    current_tick = getattr(entity, "tick", 0)
+    reg = get_registry()
+    reg.set_tick(current_tick)
 
     # 清除上轮帮助事件和元认知事件（每 tick 只保留当轮产生的事件）
     if hasattr(entity, "_last_help_event"):
@@ -100,28 +108,64 @@ def run_pipeline(
         no_llm=no_llm,
         llm_callable=llm_callable,
         params_override=params_override,
+        source_identity=source_identity,
         debug=debug,
     )
     ctx._trace = _trace
     ctx.t0 = t0
     ctx.trace = trace
 
-    # ---- 管线各阶段按顺序执行 ----
-    s01_init.run_stage(ctx, entity)       # 参数快照 + 语言模块初始化
-    s02_perception.run_stage(ctx, entity)  # 语义感知 + 驱动力 + 感质
-    s02b_input_drive_map.run_input_drive_mapping(ctx, entity)  # 输入→drive空间映射
-    run_interpretation_stage(ctx, entity)   # 解释竞争（理解机制核心）
-    s02c_delayed_understanding.run_stage(ctx, entity)  # 延迟理解层（反刍）
-    s03_think.run_stage(ctx, entity)       # 情绪粒子 + 受限思考 + 情绪衰减
-    s04a_meta.run_stage(ctx, entity)       # 元认知状态调整（MC 噪声 / 反锁 / 物理约束）
-    s04b_emerge.run_stage(ctx, entity)     # 感知 + 情绪内生 + 行为涌现 + 预测误差
-    s05_behavior.run_stage(ctx, entity)    # 连接深度 + 孤独 + 行为模式 + decision 装配
-    s06_language.run_stage(ctx, entity)        # 候选词 + 输出（daemon/LLM）+ 语言闭环
-    s07a_state_update.run_stage(ctx, entity)   # 状态回写 + BP tick + 消力系统六通道
-    s07b_persist.run_stage(ctx, entity)        # 快照 + 记忆 + episode + 时间戳
-    s07c_language_finalize.run_stage(ctx, entity)  # L3b 消力闭环 + L6 + 持久化 + 返回值
+    # ---- 管线各阶段按顺序执行（带可观测性）----
+    _run_stage(reg, "pipeline:s01_init",     s01_init.run_stage,      ctx, entity)
+    _run_stage(reg, "pipeline:s02_perception",     s02_perception.run_stage,     ctx, entity)
+    _run_stage(reg, "pipeline:s02b_drive_map",     s02b_input_drive_map.run_input_drive_mapping, ctx, entity)
+    _run_stage(reg, "pipeline:s02c_interpret",      run_interpretation_stage,     ctx, entity)
+    _run_stage(reg, "pipeline:s02c_delayed",      s02c_delayed_understanding.run_stage, ctx, entity)
+    _run_stage(reg, "pipeline:s03_think",         s03_think.run_stage,          ctx, entity)
+    _run_stage(reg, "pipeline:s04a_meta",         s04a_meta.run_stage,          ctx, entity)
+    _run_stage(reg, "pipeline:s04b_emerge",        s04b_emerge.run_stage,         ctx, entity)
+    _run_stage(reg, "pipeline:s05_behavior",        s05_behavior.run_stage,         ctx, entity)
+    _run_stage(reg, "pipeline:s06_language",        s06_language.run_stage,         ctx, entity)
+    _run_stage(reg, "pipeline:s07a_state_update",  s07a_state_update.run_stage,    ctx, entity)
+    _run_stage(reg, "pipeline:s07b_persist",        s07b_persist.run_stage,         ctx, entity)
+    _run_stage(reg, "pipeline:s07c_language_finalize", s07c_language_finalize.run_stage, ctx, entity)
 
     return ctx.result_dict
+
+
+def _run_stage(
+    reg,
+    name: str,
+    func,
+    ctx,
+    entity,
+) -> None:
+    """执行单个 stage 并记录可观测性。"""
+    import time as _time
+    start = _time.perf_counter()
+    ok = True
+    err_type = ""
+    err_val = ""
+    try:
+        func(ctx, entity)
+    except Exception as exc:
+        ok = False
+        err_type = type(exc).__name__
+        err_val = str(exc)
+        raise
+    finally:
+        dur = (_time.perf_counter() - start) * 1000.0
+        try:
+            reg.record_call(
+                name=name,
+                category="pipeline_stage",
+                success=ok,
+                duration_ms=dur,
+                error_type=err_type,
+                error_summary=err_val,
+            )
+        except Exception:
+            pass
 
 
 # ============================================================================

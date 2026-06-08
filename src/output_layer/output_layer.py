@@ -664,8 +664,8 @@ def generate_response(
         )
     else:
         try:
-            from ..llm import create_llm_callable as _create_llm
-            llm_fn = _create_llm()
+            from ..observability import create_wrapped_llm
+            llm_fn = create_wrapped_llm("output_layer")
             text, error = llm_fn(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,

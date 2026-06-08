@@ -110,8 +110,8 @@ class SemanticAnalyzer:
         BGE 部署后此方法仅作降级兜底。
         """
         try:
-            from ..llm import create_llm_callable
-            llm = create_llm_callable()
+            from ..observability import create_wrapped_llm
+            llm = create_wrapped_llm("semantic_analyzer")
 
             prompt = (
                 f"当前驱动力场：avoid={avoid:.2f}, approach={approach:.2f}, "
@@ -236,8 +236,8 @@ class SemanticAnalyzer:
     ) -> Optional[float]:
         """调用 LLM 评估消力贡献（使用 provider chain），失败时返回 None。"""
         try:
-            from ..llm import create_llm_callable
-            llm = create_llm_callable()
+            from ..observability import create_wrapped_llm
+            llm = create_wrapped_llm("semantic_analyzer")
 
             prompt = (
                 f"表达「{expression}」在 unresolved 从 {before:.2f} 到 {after:.2f} 的变化中，"

@@ -6,6 +6,8 @@
 import logging
 from typing import Dict
 
+from ..observability import observe, record_failure
+
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -28,6 +30,7 @@ def _entity_to_state_dict(entity) -> dict:
     return {f: float(getattr(entity, f, 0.0)) for f in fields}
 
 
+@observe("social_comprehension", category="language")
 def add_social_comprehension(entity, word: str, weight: float) -> None:
     """
     听懂姐妹说的一个词，积累分数猝灭信用。
@@ -74,6 +77,7 @@ _RESONANCE_DIM_RANGE: Dict[str, tuple] = {
 }
 
 
+@observe("social_comprehension:resonate", category="language")
 def resonate_with_word(entity, word: str, comprehension: float) -> None:
     """
     听到对方说某个词时，在自己的 quenching 历史里找这个词出现时的平均

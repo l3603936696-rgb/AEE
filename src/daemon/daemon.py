@@ -29,45 +29,12 @@ from pathlib import Path
 from typing import Optional
 
 from .ipc_client import SOCKET_PATH, IPCError
+from .ipc_chat_handler import handle_chat_request
 from .protocol import IPCRequest, IPCResponse
 from .tick_engine import TickEngine
-from ..entity_zero_iteration import run_pipeline, get_entity_state
-from ..llm import create_llm_callable
+from .http_server import HTTPServer
+from ..entity_zero_iteration import get_entity_state
 from ..response_cache import ResponseCache
-from ..response_cache.response_cache import _cache_weight
-
-
-# ============================================================================
-# 安全序列化
-# ============================================================================
-
-def _safe_json_serializable(obj):
-    """
-    递归清理对象，只保留 JSON-safe 的值。
-    - dict/list/tuple → 递归清理
-    - 基本类型（str/int/float/bool/None）→ 原样返回
-    - Episode / dataclass / namedtuple → 转 dict
-    - 不可序列化的对象 → 转 str
-    """
-    if isinstance(obj, dict):
-        return {k: _safe_json_serializable(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return [_safe_json_serializable(x) for x in obj]
-    elif isinstance(obj, (str, int, float, bool, type(None))):
-        return obj
-    else:
-        # dataclass / Episode / namedtuple / etc.
-        try:
-            if hasattr(obj, "__dataclass_fields__"):
-                return {f: _safe_json_serializable(getattr(obj, f)) for f in obj.__dataclass_fields__}
-            elif hasattr(obj, "_asdict"):
-                return obj._asdict()
-            elif hasattr(obj, "__dict__"):
-                return {k: _safe_json_serializable(v) for k, v in vars(obj).items()}
-        except Exception:
-            pass
-        return str(obj)
-
 
 
 logger = logging.getLogger(__name__)
@@ -262,152 +229,13 @@ class IPCServer:
             return resp.to_json()
 
     def _handle_chat(self, request: IPCRequest) -> dict:
-        """处理对话请求（含 response pre-warming 快速通道）"""
-        import time as _time
-        _t0 = _time.time()
-
-        text   = request.payload.get("text", "")
-        debug  = request.payload.get("debug", False)
-        # 默认走内生语言路径（锚点/叙事），不依赖 LLM —— 契合"LLM 是拐杖，能不用
-        # 就不用"。调用方显式传 no_llm=false 才退回 LLM 输出（需 DeepSeek 余额）。
-        no_llm = request.payload.get("no_llm", True)
-        entity = get_entity_state()
-
-        # ---- 表达反馈闭环（模块B+C）：用本次输入结算她之前的自主表达意图 ----
-        # 她之前 daemon tick 说的话是 action，这次输入是 outcome。
-        # 相关回应 → 对应表达 efficiency 真实升高 + 挂账驱动力被满足。
-        # 放在分流之前：无论缓存还是 pipeline 路径，都先结算（独立于本次怎么回答）。
-        try:
-            from ..language_system.expression_feedback import consume_response
-            consume_response(entity, text, entity.tick)
-        except Exception as _fb_err:
-            logger.debug(f"[IPCServer] expression feedback skipped: {_fb_err}")
-
-        # ---- 澄清归属观察（clarification_learning v2）：回答归属到她之前的澄清 ----
-        # 与 consume_response 并列，不影响主流程，不依赖/不改其结算。
-        try:
-            from ..language_system.clarification_learning import observe_reply
-            observe_reply(
-                entity,
-                reply_text=text,
-                now_ts=time.time(),
-                source="ipc_chat",
-                reply_event_id=str(request.id),
-            )
-        except Exception as _ob_err:
-            logger.debug(f"[IPCServer] clarification observe skipped: {_ob_err}")
-
-        # ---- Cheap drive-vector probe (no LLM, pure math) ----
-        _cached_text, _cache_sim = None, 0.0
-        try:
-            from ..drive_system.drive_system import compute_drive_vector
-            from ..pipeline_runner.utils import get_default_drive_params
-            _snap = entity.to_state_snapshot()
-            _drive_params = {
-                "curiosity_param":      _snap.get("curiosity_param", 1.0),
-                "max_info_gap_hours":   _snap.get("max_info_gap_hours", 24.0),
-                "max_social_gap_hours": _snap.get("max_social_gap_hours", 24.0),
-                **get_default_drive_params(),
-            }
-            _query_dv = compute_drive_vector(_snap, _drive_params)
-            _cache = self._response_cache
-            has_cache = min(1.0, float(_cache is not None and _cache.size() > 0))
-            noop_w    = 1.0 - has_cache
-            _cached_text, _cache_sim = max(
-                {
-                    "probe": (has_cache, lambda: _cache.match(_query_dv)),
-                    "noop":  (noop_w,    lambda: (None, 0.0)),
-                }.items(),
-                key=lambda kv: kv[1][0],
-            )[1][1]()
-        except Exception as _e:
-            logger.debug(f"[IPCServer] cache probe failed: {_e}")
-
-        # ---- Strategy dispatch: cache vs full pipeline ----
-        # A cached autonomous utterance has no semantic relationship to a new
-        # chat message. Keep pre-warming for empty probes, but let real input
-        # reach the understanding and clarification path.
-        _input_gate = min(1.0, float(len(str(text or ""))))
-        cache_score    = _cache_weight(_cache_sim, threshold=0.90, steepness=20.0) * (1.0 - _input_gate)
-        pipeline_score = 1.0 - cache_score
-
-        def _serve_cache() -> dict:
-            _ms = round((_time.time() - _t0) * 1000)
-            logger.info(
-                f"[IPCServer] cache hit sim={_cache_sim:.3f} weight={cache_score:.3f} {_ms}ms"
-            )
-            return {
-                "response":       {"text": _cached_text, "confidence": _cache_sim,
-                                   "generation_time_ms": _ms},
-                "decision":       {},
-                "state_snapshot": self._clean_state_snapshot(entity.to_state_snapshot()),
-                "tick":           entity.tick,
-                "total_ms":       _ms,
-                "trace":          [],
-            }
-
-        def _serve_pipeline() -> dict:
-            result = run_pipeline(
-                raw_input=text,
-                entity_state=entity,
-                debug=debug,
-                llm_callable=self._llm_callable,
-                no_llm=no_llm,
-            )
-            safe = _safe_json_serializable(result)
-            return {
-                "response":             safe.get("response", {}),
-                "decision":             safe.get("decision", {}),
-                "state_snapshot":       self._clean_state_snapshot(safe.get("state_snapshot", {})),
-                "tick":                 safe.get("tick", entity.tick),
-                "total_ms":             safe.get("total_ms", 0),
-                "trace":                safe.get("trace", []) if debug else [],
-                "cx_recognized_words":  safe.get("cx_recognized_words", []),
-                "cx_social_intent":     safe.get("cx_social_intent", "unknown"),
-            }
-
-        _response = max(
-            {
-                "cache":    (cache_score,    _serve_cache),
-                "pipeline": (pipeline_score, _serve_pipeline),
-            }.items(),
-            key=lambda kv: kv[1][0],
-        )[1][1]()
-
-        # ---- 他者建模：更新外部用户 profile（cache 和 pipeline 路径均触发）----
-        try:
-            from ..language_system.source_profiler import update_profile
-            _obs = entity._causal_observations
-            _last_delta = _obs[-1]["delta"] if _obs else {}
-            update_profile(
-                entity,
-                "external",
-                _response.get("cx_recognized_words", []),
-                _response.get("cx_social_intent", "unknown"),
-                _last_delta,
-                entity.tick,
-            )
-            # cache 路径不触发 pipeline persist，需显式落盘（用默认路径）
-            entity.persist_to_file()
-        except Exception as _sp_err:
-            logger.warning(f"[SourceProfiler] external update skipped: {_sp_err}")
-
-        return _response
-
-    def _clean_state_snapshot(self, raw: dict) -> dict:
-        """
-        从 state_snapshot 中剔除内部字段，防止响应过大导致 IPC 截断。
-        只保留可安全暴露给外部的字段。
-        """
-        PUBLIC_FIELDS = {
-            "tick", "energy", "loneliness", "fatigue", "stress",
-            "boredom", "curiosity", "info_gap", "approach_drive", "avoid_drive",
-            "somatic_tone", "anger", "anxiety", "fear", "joy", "sadness",
-            "unresolved", "self_trust", "attachment", "empathy",
-            "last_interaction_context",
-        }
-        return {k: v for k, v in raw.items() if k in PUBLIC_FIELDS}
-
+        """Handle chat requests."""
+        return handle_chat_request(
+            request,
+            self._llm_callable,
+            self._response_cache,
+            logger,
+        )
     def _handle_status(self) -> dict:
         """处理状态查询请求"""
         status = self._tick_engine.get_status()
@@ -448,203 +276,6 @@ class IPCServer:
 # HTTP API 服务器 (Windows 兼容)
 # ============================================================================
 
-HTTP_REQUEST_POLL_INTERVAL_S = 0.5
-HTTP_STOP_JOIN_TIMEOUT_S = 1.0
-
-
-class HTTPServer:
-    """
-    HTTP API 服务器，供 Windows 上的 Electron 前端访问。
-
-    监听 127.0.0.1:8765，将 HTTP 请求转发到 IPCServer 处理。
-    """
-
-    def __init__(self, ipc_server: IPCServer, port: int = 8765) -> None:
-        import http.server
-        import socketserver
-
-        self._ipc_server = ipc_server
-        self._port = port
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            _ipc_server = ipc_server
-
-            def do_POST(self):
-                content_length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(content_length)
-
-                try:
-                    import json
-                    data = json.loads(body.decode('utf-8'))
-                    request_type = data.get('type', '')
-                    payload = data.get('payload', {})
-
-                    # 构建 IPCRequest
-                    from .protocol import IPCRequest
-                    req = IPCRequest(type=request_type, id='', payload=payload)
-                    result = self._ipc_server._dispatch(req)
-
-                    # 解析响应
-                    resp = IPCResponse.from_json(result)
-
-                    self.send_response(200 if resp.ok else 500)
-                    self.send_header('Content-Type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(result.encode('utf-8'))
-                except Exception as e:
-                    self.send_response(500)
-                    self.send_header('Content-Type', 'application/json')
-                    self.end_headers()
-                    import json
-                    self.wfile.write(json.dumps({'ok': False, 'error': str(e)}).encode('utf-8'))
-
-            def do_GET(self):
-                if self.path == '/status':
-                    try:
-                        status = self._ipc_server._handle_status()
-                        import json
-                        self.send_response(200)
-                        self.send_header('Content-Type', 'application/json')
-                        self.end_headers()
-                        self.wfile.write(json.dumps(status).encode('utf-8'))
-                    except Exception as e:
-                        self.send_response(500)
-                        self.end_headers()
-                        self.wfile.write(str(e).encode('utf-8'))
-                elif self.path == '/diary':
-                    try:
-                        from ..inner_diary import read_diary_entries
-                        entries = read_diary_entries(limit=50)
-                        data = [e.to_dict() for e in entries]
-                        import json
-                        self.send_response(200)
-                        self.send_header('Content-Type', 'application/json')
-                        self.end_headers()
-                        self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
-                    except Exception as e:
-                        self.send_response(500)
-                        self.end_headers()
-                        self.wfile.write(str(e).encode('utf-8'))
-                elif self.path.startswith('/logs'):
-                    try:
-                        import json
-                        from urllib.parse import urlparse, parse_qs
-                        parsed = urlparse(self.path)
-                        params = parse_qs(parsed.query)
-                        filename = params.get('file', ['daemon_live.log'])[0]
-                        limit = int(params.get('limit', ['200'])[0])
-                        from pathlib import Path
-                        logs_dir = Path(__file__).parent.parent.parent / "logs"
-                        target = (logs_dir / filename).resolve()
-                        if not str(target).startswith(str(logs_dir.resolve())):
-                            self.send_response(403)
-                            self.end_headers()
-                            return
-                        if target.exists():
-                            lines = target.read_text(encoding='utf-8', errors='replace').splitlines()
-                            recent = lines[-limit:]
-                            self.send_response(200)
-                            self.send_header('Content-Type', 'application/json')
-                            self.end_headers()
-                            self.wfile.write(json.dumps({
-                                "file": filename,
-                                "total_lines": len(lines),
-                                "lines": recent,
-                            }, ensure_ascii=False).encode('utf-8'))
-                        else:
-                            self.send_response(404)
-                            self.send_header('Content-Type', 'application/json')
-                            self.end_headers()
-                            self.wfile.write(json.dumps({"error": "file not found"}).encode('utf-8'))
-                    except Exception as e:
-                        self.send_response(500)
-                        self.end_headers()
-                        self.wfile.write(str(e).encode('utf-8'))
-                elif self.path == '/vocab':
-                    try:
-                        import json
-                        entity = self._ipc_server._tick_engine.entity
-                        unlocked = list(getattr(entity, "_unlocked_vocabulary", []))
-                        cluster_weights = dict(getattr(entity, "_cluster_weights", {}))
-                        quenching_raw = getattr(entity, "_quenching_data", {})
-                        efficiency = {}
-                        if isinstance(quenching_raw, dict):
-                            records = quenching_raw.get("records", [])
-                            for r in records[-200:]:
-                                w = r.get("expression", "")
-                                e = r.get("efficiency", 0.0)
-                                if w:
-                                    if w not in efficiency:
-                                        efficiency[w] = []
-                                    efficiency[w].append(e)
-                        word_stats = {
-                            w: round(sum(v) / len(v), 3)
-                            for w, v in efficiency.items() if v
-                        }
-                        tl_data = getattr(entity, "_template_learner_data", {})
-                        learned_weights = tl_data.get("learned_weights", {}) if isinstance(tl_data, dict) else {}
-                        runtime_templates = [
-                            {"template": t.get("template", ""), "born_tick": t.get("born_tick", -1)}
-                            for t in (tl_data.get("runtime_templates", []) if isinstance(tl_data, dict) else [])
-                        ]
-                        self.send_response(200)
-                        self.send_header('Content-Type', 'application/json')
-                        self.send_header('Access-Control-Allow-Origin', '*')
-                        self.end_headers()
-                        self.wfile.write(json.dumps({
-                            "unlocked": unlocked,
-                            "cluster_weights": cluster_weights,
-                            "word_efficiency": word_stats,
-                            "learned_template_count": len(learned_weights),
-                            "runtime_templates": runtime_templates,
-                        }, ensure_ascii=False).encode('utf-8'))
-                    except Exception as e:
-                        self.send_response(500)
-                        self.end_headers()
-                        self.wfile.write(str(e).encode('utf-8'))
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-
-            def log_message(self, format, *args):
-                logger.info(f"[HTTP] {args[0]}")
-
-        self._Handler = Handler
-        self._socketserver = socketserver
-
-    def start(self) -> None:
-        """启动 HTTP 服务器（后台线程）"""
-        if self._running:
-            return
-
-        self._socketserver.TCPServer.allow_reuse_address = True
-        self._httpd = self._socketserver.TCPServer(('127.0.0.1', self._port), self._Handler)
-        self._httpd.timeout = HTTP_REQUEST_POLL_INTERVAL_S
-        self._running = True
-
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-        logger.info(f"[HTTP API] listening on http://127.0.0.1:{self._port}")
-
-    def _run(self) -> None:
-        """运行服务器"""
-        while self._running:
-            self._httpd.handle_request()
-
-    def stop(self) -> None:
-        """停止 HTTP 服务器"""
-        self._running = False
-        try:
-            self._thread.join(timeout=HTTP_STOP_JOIN_TIMEOUT_S)
-            self._httpd.server_close()
-        except Exception:
-            pass
-
-
-# ============================================================================
-# Daemon 主入口
 # ============================================================================
 
 def run_daemon(tick_interval: float = 30.0, http_port: int = 8765, ipc_port: int = 8766, train_only: bool = False) -> None:
@@ -678,8 +309,9 @@ def run_daemon(tick_interval: float = 30.0, http_port: int = 8765, ipc_port: int
         f"wm_rules={len(entity.wm_rules)}"
     )
 
-    # 初始化 LLM 后端（DeepSeek API）
-    llm_callable = create_llm_callable()
+    # 初始化 LLM 后端（DeepSeek API，带观测）
+    from ..observability import create_wrapped_llm
+    llm_callable = create_wrapped_llm("daemon_ipc")
 
     # 初始化组件
     shutdown_requested = threading.Event()

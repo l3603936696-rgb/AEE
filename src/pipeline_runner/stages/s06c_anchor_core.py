@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from ...language_system import QuenchingTracker
 from ...language_system.sentence_composer import PATTERNS
 from ...language_training import match_anchor_expression
+from ...observability import observe_block
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +37,10 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
             get_top_preoccupation as _pre_top,
         )
         # 心事系统：每 tick 衰减
-        try: _pre_decay(entity)
-        except Exception: pass
+        with observe_block("s06c:preoccupation_decay"):
+            _pre_decay(entity)
         # 概念图激活
-        try:
+        with observe_block("s06c:concept_graph"):
             _cg_from_vocab = [w for w, _ in _cx_parse_result.get("recognized_words", [])]
             _cg_from_text = scan_text_for_concepts(raw_input or "")
             _cg_words = list(dict.fromkeys(_cg_from_vocab + _cg_from_text))
@@ -50,9 +51,8 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
             _cg_snap = dict(_real_state)
             for _cg_w in _cg_words:
                 record_exposure(_cg_w, entity, _cg_snap)
-        except Exception: pass
         # 输入包
-        try:
+        with observe_block("s06c:input_packet"):
             _concept_bias_ref = locals().get("_concept_bias", {})
             _input_packet = build_input_packet(raw_input or "", _concept_bias_ref)
             _cx_parse_result["input_packet"] = _input_packet
@@ -66,9 +66,8 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
             _st_refs["curiosity"] = _st_refs.get("curiosity", 0.0) + _q * 0.05
             _real_state["_input_other"] = _input_packet["relational_direction"].get("other", 0.0)
             _real_state["_input_sharing"] = _input_packet["social_intent"].get("sharing", 0.0)
-        except Exception: pass
         # 输入 → 心事触发
-        try:
+        with observe_block("s06c:preoccupation_trigger"):
             _other_w = _real_state.get("_input_other", 0.0)
             _sharing_w = _real_state.get("_input_sharing", 0.0)
             _trigger_w = _other_w * _sharing_w
@@ -90,9 +89,8 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
             if sum((raw_input or "").count(w) for w in _COMFORT_WORDS) > 0:
                 _pre_soothe(entity, about="self")
                 _pre_soothe(entity, about="speaker")
-        except Exception: pass
         # 心事 → _real_state 偏置注入
-        try:
+        with observe_block("s06c:preoccupation_bias"):
             _pre_bias = _pre_project(entity)
             for _dim, _delta in _pre_bias.items():
                 _cur = float(_real_state.get(_dim, 0.0))
@@ -104,9 +102,8 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                 _real_state["_preoccupation_about"] = _about_display
                 _real_state["_preoccupation_intensity"] = float(_top.get("intensity", 0.0))
                 _real_state["_preoccupation_type"] = _top.get("type", "")
-        except Exception: pass
         # 自我叙事染色
-        try:
+        with observe_block("s06c:narrative_bias"):
             _NARRATIVE_BIAS_SCALE, _NARRATIVE_BIAS_MAX = 0.6, 0.08
             _narr_bias = getattr(entity, "_narrative_bias", None) or {}
             for _dim, _delta in _narr_bias.items():
@@ -115,7 +112,6 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                     _scaled = max(-_NARRATIVE_BIAS_MAX, min(_NARRATIVE_BIAS_MAX, float(_delta) * _NARRATIVE_BIAS_SCALE))
                     _real_state[_dim] = min(1.0, max(-1.0, _real_state.get(_dim, 0.0) + _scaled))
                 except (TypeError, ValueError): pass
-        except Exception: pass
         # 语义临时偏置（代词方向 + 回退到 _cx_parse_result）
         from ...language_system.pronoun_direction import match_state_reference
         _pr_result = match_state_reference(raw_input or "")
@@ -130,7 +126,7 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                 _scale = _pw * max(0.15, _cur) + (1.0 - _pw) * 1.0
                 _real_state[_ref_dim] = min(1.0, _cur + _ref_bias * _scale)
             except (KeyError, TypeError, ValueError): pass
-        try:
+        with observe_block("s06c:uncertainty_injection"):
             from ...language_system.output_state_bias import inject_thinking_focus
             inject_thinking_focus(entity, _real_state, _trace)
             from ...language_system.uncertainty_expression import (
@@ -139,7 +135,6 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
             )
             inject_understanding_uncertainty(entity, _real_state, raw_input or "")
             inject_proposition_uncertainty(_real_state, _cx_parse_result.get("proposition_frame", {}))
-        except Exception: _real_state["_understanding_uncertainty"] = 0.0
         return locals().get("_concept_bias", {})
     # -------------------------------------------------------------------------
 
@@ -168,7 +163,7 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
     # ① 合成始终运行
     _tmpl_idx = -1; _all_templates_snapshot = []  # 函数体层初始化：空锚词路径也已绑定，避免 record 处 NameError
     if _anchor_text:
-        try:
+        with observe_block("s06c:sentence_compose"):
             from ...language_system.sentence_composer import (
                 compose_sentence, _COMPOSE_TEMP_BASE, _COMPOSE_TEMP_BOREDOM_GAIN
             )
@@ -178,7 +173,7 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                 _te = _q_tmp.get_template_efficiency(seed_count=len(PATTERNS))
             _compose_temp_dm = _COMPOSE_TEMP_BASE + float(_real_state.get("boredom", 0.2)) * _COMPOSE_TEMP_BOREDOM_GAIN
             _extra = list(getattr(entity, "_runtime_templates", None) or [])
-            try:
+            with observe_block("s06c:cxg_candidates"):
                 from ...language_system.uncertainty_expression import get_uncertainty_patterns
                 _extra.extend(get_uncertainty_patterns())
                 _cxg = getattr(entity, "_cxg_learner", None)
@@ -195,7 +190,6 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                         action_context=getattr(entity, "_current_action", "") or "",
                     )
                     _extra.extend(_cxg_candidates)
-            except Exception: pass
             _sem_second = _second_word or next(iter([w for w, _ in _cx_parse_result.get("recognized_words", [])]), None)
             # 模板快照（record 用，必须与 compose_sentence 内部 all_templates 一致）
             _all_templates_snapshot = PATTERNS + _extra
@@ -211,7 +205,6 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
             )
             if _composed:
                 _anchor_text = _composed
-        except Exception: pass
     entity._last_template_idx = _tmpl_idx
 
     # ② 显示决策（softmax 连续竞争）
@@ -238,7 +231,7 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
 
     # 澄清记忆记录（clarification_memory v1 record-only）
     if _all_templates_snapshot:
-        try:
+        with observe_block("s06c:clarification_memory"):
             from ...language_system.clarification_memory import (
                 maybe_record_displayed_clarification as _record_clar,
             )
@@ -251,11 +244,10 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                 _tmpl_idx=_tmpl_idx,
                 all_templates_snapshot=_all_templates_snapshot,
             )
-        except Exception: pass
 
     # 训练 episode 写入（anchor 显示时记录）
     for _ in range(int(round(_anchor_display_w))):
-        try:
+        with observe_block("s06c:episode_write"):
             from ...memory_hub.episodes_db import Episode, write_episode
             _ep = Episode(
                 iteration_id=entity.tick,
@@ -267,10 +259,9 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                 summary=f"[anchor_auto] {_anchor_text}",
             )
             write_episode(_ep)
-        except Exception: pass
 
     # 内语回路（anchor 显示时生效）
-    try:
+    with observe_block("s06c:inner_speech"):
         from ...language_system.construction_parser import parse_self_speech
         _inner = parse_self_speech(_anchor_text or "", entity)
         _inner_delta = _inner.get("drive_delta", {})
@@ -285,7 +276,6 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
             "comprehension": _comprehension,
             "delta_dims": list(_inner_delta.keys()),
         })
-    except Exception: pass
 
     # ③ 学习始终运行
     entity._language_best_score = _anchor_best_score_raw
@@ -294,7 +284,7 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
 
     # 表达消力 + 消力记录（每 tick 运行）
     if _best_word:
-        try:
+        with observe_block("s06c:expression_quench"):
             from ...quenching_system import expression_quenching
             _ur_before = float(_real_state.get("unresolved", 0.0))
             expression_quenching(entity, _best_word)
@@ -315,7 +305,7 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
             entity._quenching_data = _q.to_dict()
 
             # 模板权重学习 + 进化
-            try:
+            with observe_block("s06c:template_learner"):
                 from ...language_system import template_learner
                 _eff = max(0.0, _ur_before - _ur_after) / max(_ur_before, 0.01)
                 _lw = getattr(entity, "_template_learned_weights", {})
@@ -332,10 +322,9 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                     entity._runtime_templates = _rt
                     logger.info(f"[TemplateLearner] t={entity.tick} new template: {_new_tmpl['template']}")
                 entity._template_learner_data = template_learner.to_dict(_lw, _rt, _sc)
-            except Exception: pass
 
             # 构式习得：记录实例 + 反馈
-            try:
+            with observe_block("s06c:cxg_learner"):
                 _cxg = getattr(entity, "_cxg_learner", None)
                 if _cxg is not None and _best_word:
                     _all_tmpls = PATTERNS + list(getattr(entity, "_runtime_templates", []))
@@ -367,18 +356,14 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                     if _rcxg is not None:
                         _rcxg.decay_all()
                         entity._rcxg_data = _rcxg.to_dict()
-            except Exception: pass
-        except Exception: pass
-
     # 热身注入（daemon 自主积累）
-    try:
+    with observe_block("s06c:word_warmup"):
         from ...language_system.word_warmup import inject_warmup_candidates
         inject_warmup_candidates(entity, [], min_hits=3, min_best_efficiency=0.15)
-    except Exception: pass
 
     # 内源校准（每 30 tick 回溯验证一次）
     if entity.tick % 30 == 0:
-        try:
+        with observe_block("s06c:endogenous_calibration"):
             from ...endogenous_calibration import calibrate_from_episodes, apply_calibration
             _calib_report = calibrate_from_episodes(entity, _real_state, limit=5)
             apply_calibration(entity, _calib_report)
@@ -388,7 +373,6 @@ def run_anchor_core(entity, raw_input, _cx_parse_result, _narrative_text, _is_wa
                     f"verified={_calib_report['verified_count']} "
                     f"rate={_calib_report.get('verification_rate', 0):.0%}"
                 )
-        except Exception: pass
 
     return {
         "text": _anchor_text or "",

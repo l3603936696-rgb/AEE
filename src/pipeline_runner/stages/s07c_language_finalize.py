@@ -84,7 +84,7 @@ def run_stage(ctx, entity) -> None:  # noqa: C901
     try:
         if raw_input and str(raw_input).strip():
             from ...language_system.stereotype_learner import quick_learn
-            _src_id = "external"
+            _src_id = getattr(ctx, "source_identity", {}).get("speaker_id") or "external"
             _text = str(raw_input)
             _emotion = float(semantic_packet_biased.get("emotion", 0.0)) if semantic_packet_biased else 0.0
             quick_learn(entity, _src_id, _text, _emotion)
@@ -218,6 +218,43 @@ def run_stage(ctx, entity) -> None:  # noqa: C901
                 })
     except Exception as e:
         _trace("language闭环_post", False, {}, str(e))
+
+    # =========================================================================
+    # [语言系统 L3c] 前向消力（v1）
+    # 独立于旧 quenching efficiency 路径，delta 直接作用于 entity 状态。
+    # loneliness 不受影响。proposition_frame 预留 v2 接入。
+    # =========================================================================
+    try:
+        if _lang_before_state is not None and _lang_expression:
+            from ...language_system.expression_relief import compute_relief
+            _relief_novelty = _quenching.get_repetition_discount(
+                expression=_lang_expression,
+                current_tick=getattr(entity, "tick", 0),
+                params=getattr(entity, "_repetition_decay_params", {}),
+            )
+            _relief_state = {
+                "boredom":    float(getattr(entity, "boredom",    0.0)),
+                "unresolved": float(getattr(entity, "unresolved", 0.0)),
+            }
+            _relief_state.update(
+                {k: float(v) for k, v in _lang_before_state.items()
+                 if isinstance(v, (int, float))}
+            )
+            _relief_result = compute_relief(
+                expression=_lang_expression,
+                state=_relief_state,
+                novelty=_relief_novelty,
+                param_snapshot=_snapshot_dict,
+            )
+            entity.boredom = max(0.0, min(1.0,
+                float(getattr(entity, "boredom",    0.0)) + _relief_result["boredom_delta"]
+            ))
+            entity.unresolved = max(0.0, min(1.0,
+                float(getattr(entity, "unresolved", 0.0)) + _relief_result["unresolved_delta"]
+            ))
+            _trace("expression_relief", True, _relief_result["diagnostics"])
+    except Exception as e:
+        _trace("expression_relief", False, {}, str(e))
 
     # =========================================================================
     # [语言系统 L6] L3b 后：语言系统状态持久化

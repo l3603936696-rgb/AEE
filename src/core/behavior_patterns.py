@@ -32,114 +32,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .behavior_patterns_schema import (
+    PATTERNS_FILE,
+    PRIMITIVE_ACTIONS,
+    ACTION_TO_TYPE,
+    INTENT_RULES,
+    INTENT_TO_DRIVE,
+    _band,
+    _make_context_signature,
+    _make_wm_key,
+    _classify_intent,
+)
+
 logger = logging.getLogger(__name__)
 
-# ============================================================================
-# 路径常量
-# ============================================================================
-
-PATTERNS_FILE = Path(__file__).parent.parent.parent / "data" / "behavior_patterns.json"
-PATTERNS_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-# ============================================================================
-# 原子动作定义
-# ============================================================================
-
-PRIMITIVE_ACTIONS: List[str] = [
-    "web_search", "file_write", "file_read", "file_list",
-    "browser_open", "browser_screenshot", "shell_run",
-]
-
-ACTION_TO_TYPE: Dict[str, str] = {
-    "web_search":            "explore",
-    "file_write":            "explore",
-    "file_read":             "explore",
-    "file_list":             "explore",
-    "browser_open":          "explore",
-    "browser_screenshot":    "explore",
-    "shell_run":             "explore",
-}
-
-# ============================================================================
-# 工具函数：context_signature（WMDB situation-level key）
-# ============================================================================
-
-
-def _make_context_signature(state: Dict[str, float]) -> str:
-    """
-    从状态快照提取 context_signature，用于区分"什么情境"。
-
-    用离散化 + 组合方式，不用 embedding，不依赖 LLM。
-    格式：level_描述
-    """
-    boredom = _band(state.get("boredom", 0.3), "b")
-    loneliness = _band(state.get("loneliness", 0.3), "l")
-    fatigue = _band(state.get("fatigue", 0.1), "f")
-    energy = _band(state.get("energy", 0.7), "e")
-    unresolved = _band(state.get("unresolved", 0.2), "u")
-    curiosity = _band(state.get("curiosity", state.get("info_gap", 0.3)), "c")
-    social_time = _band(state.get("time_since_last_social", 0.0) / 300, "s")  # 5min 为单位
-    info_time = _band(state.get("time_since_last_info", 0.0) / 120, "i")      # 2min 为单位
-
-    return f"{boredom}{loneliness}{fatigue}{energy}{unresolved}{curiosity}{social_time}{info_time}"
-
-
-def _band(value: float, prefix: str) -> str:
-    """将连续值离散化为低/中/高三档"""
-    if value < 0.33:
-        return f"{prefix}0"
-    elif value < 0.66:
-        return f"{prefix}1"
-    else:
-        return f"{prefix}2"
-
-
-def _make_wm_key(action: str, state: Dict[str, float]) -> str:
-    """生成 situation-level WM key"""
-    sig = _make_context_signature(state)
-    return f"{action}@{sig}"
-
-
-# ============================================================================
-# 工具函数：intent_tag（规则分类，不用 LLM）
-# ============================================================================
-
-
-INTENT_RULES: List[Tuple[List[str], str]] = [
-    # (content 关键词, intent_tag)
-    (["新闻", "最新", "最近", "发生了什么", "头条"], "explore_topic"),
-    (["展览", "艺术", "音乐", "电影", "有趣"], "explore_topic"),
-    (["孤独", "寂寞", "找人", "陪伴", "想聊天", "REACH"], "seek_connection"),
-    (["问题", "解决", "怎么办", "如何", "疑问"], "solve_problem"),
-    (["记录", "写", "笔记", "写下来", "备忘"], "express"),
-    (["无聊", "没事做", "打发", "玩"], "kill_time"),
-    (["担心", "害怕", "焦虑", "紧张", "压力"], "seek_comfort"),
-]
-
-
-def _classify_intent(content: str, reason: str = "") -> str:
-    """
-    规则分类：从 action_result.content 推断 intent_tag。
-
-    不依赖 LLM，只做关键词匹配。
-    """
-    text = (content + " " + reason).lower()
-    for keywords, intent in INTENT_RULES:
-        if any(kw in text for kw in keywords):
-            return intent
-    return "unknown"
-
-
-# intent_tag → 长时偏置驱动
-INTENT_TO_DRIVE: Dict[str, str] = {
-    "explore_topic":   "explore",
-    "seek_connection":"connect",
-    "solve_problem":  "build",
-    "express":        "introspect",
-    "kill_time":      "explore",
-    "seek_comfort":   "connect",
-    "unknown":        "explore",   # 默认向探索偏移
-}
+# Hyperparameters and helper functions are in behavior_patterns_schema.py
 
 
 def update_long_term_bias(

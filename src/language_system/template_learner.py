@@ -66,6 +66,10 @@ def update_weights(
     for dim, val in state.items():
         if not isinstance(val, (int, float)):
             continue
+        # 防御未归一化维度（如 time_since_last_info/social，原始计数可达上万）：
+        # 学习规则 (val-0.5) 假设 val∈[0,1]，超界值会把权重放大成天文数字。
+        # clamp 压回 [0,1]，是连续函数，不引入行为分支。
+        val = max(0.0, min(1.0, val))
         delta = _LR * (val - 0.5) * advantage
         lw[dim] = lw.get(dim, 0.0) + delta
 

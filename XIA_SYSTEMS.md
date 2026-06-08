@@ -30,6 +30,7 @@ Use this section to quickly find which files to inspect when working on a specif
 | If you are changing... | Inspect these files first |
 | --- | --- |
 | Language output (anchor/templating) | `src/language_system/` |
+| Language training anchor matching | `src/language_training.py`, `src/language_anchor_match.py` |
 | Language output (LLM response) | `src/pipeline_runner/stages/s06_language/` |
 | Daemon tick behavior | `src/daemon/tick_engine.py`, `src/daemon/daemon.py` |
 | State update mechanics | `src/state_update/`, `src/entity_state.py` |
@@ -141,7 +142,7 @@ All stages share a mutable context container (SimpleNamespace). Stage functions 
 | `stages/s02_perception.py` | Semantic perception + drives + somatic |
 | `stages/s02b_input_drive_map/` | Input to drive mapping (BGE) |
 | `stages/s02c_delayed_understand.py` | Delayed understanding |
-| `interpretation_competition.py` | Experience candidate competition |
+| `interpretation_competition/` | Interpretation competition submodules |
 | `stages/s03_think.py` | Emotion particles + thinking |
 | `stages/s04a_meta.py` | Meta-cognitive adjustment |
 | `stages/s04b_emerge.py` | Behavior emergence |
@@ -177,7 +178,27 @@ All stages share a mutable context container (SimpleNamespace). Stage functions 
 | File | Function |
 | --- | --- |
 | `daemon.py` | Main entry, IPCServer/HTTPServer/TickEngine assembly |
+| `http_server.py` | Windows-compatible HTTP API forwarding to IPC handlers |
+| `ipc_chat_handler.py` | IPC chat handling, cache probing, pipeline dispatch, and source profiling |
 | `tick_engine.py` | Background tick advancement (every 30s calls `run_pipeline`) |
+| `action_execution.py` | Bridges pipeline decisions into daemon-triggered actions |
+| `async_updates.py` | Submits fire-and-forget experience/world-model update coroutines |
+| `autonomous_action_memory.py` | Writes autonomous action results into episodes, snapshots, and behavior rules |
+| `causal_observation.py` | Records source/state-delta causal observations with rolling retention |
+| `covariance_update.py` | Updates covariance tracker state and attention weights |
+| `environment_vector.py` | Maintains per-tick semantic residue and social prediction tension |
+| `expression_postprocess.py` | Applies expression feedback, self-counsel, and epistemic credit settling |
+| `output_causal_observation.py` | Tracks output-caused state deltas across daemon ticks |
+| `periodic_maintenance.py` | Runs scheduled causal learning, weathering drift, and tension snapshots |
+| `reading_cycle.py` | Runs reading intake and reading-derived sentence pattern extraction |
+| `reflection_jepa_tick.py` | Runs inner diary, reflection, and JEPA learning steps |
+| `response_prewarm.py` | Pre-warms response cache entries from drive vectors and output text |
+| `sibling_tick.py` | Handles sibling-channel social credit, fork checks, and anchor posting |
+| `source_tick.py` | Updates source profiles, reply drive, semantic residue, and familiarity effects |
+| `state_pattern_tick.py` | Runs StatePatternMemory internal symbol emergence per tick |
+| `tick_input.py` | Prepares reach/sibling input, source identity, and input feedback hooks |
+| `tick_status.py` | Builds daemon status summaries |
+| `world_model_tick.py` | Runs world-model induction, question tension release, and reading taste updates |
 | `ipc_client.py` | Unix Socket/TCP client |
 | `protocol.py` | IPC request/response format |
 | `reading_source.py` | Reads text from `library/` for vocabulary acquisition |
@@ -387,7 +408,8 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 
 | File | Function |
 | --- | --- |
-| `semantic_base.py` | Semantic base (delta interpretation) |
+| `semantic_tables.py` | Semantic constants (dimensions, actions, causal seeds) |
+| `semantic_base.py` | Semantic query interface (delta interpretation) |
 | `mental_simulation.py` | Mental simulation for suggestion verification |
 | `covariance_tracker.py` | Covariance tracking (dimensional attention weights) |
 
@@ -415,12 +437,15 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 | --- | --- |
 | `quenching.py` | Quenching efficiency tracking |
 | `word_warmup.py` | Vocabulary cold->warm unlocking (>=3 quenchings unlock, v11.3 separates activation from forgetting) |
-| `sentence_composer.py` | Anchor words + modifiers -> sentences, softmax sampling, 30+ templates |
+| `sentence_composer.py` | Anchor words -> sentences, softmax sampling (thin entry) |
+| `sentence_composer_schema.py` | Hyperparameters + math helpers |
 | `somatic_concept_map.py` | Somatic word <-> drive field mapping |
 | `strategy_map.py` | Strategy map immediate cache layer |
 | `connector_map.py` | Intensity prefix / mood opening / suffix scoring |
 | `template_learner.py` | Template learning |
-| `construction_grammar.py` | Construction learning ("mouth" - output side) |
+| `construction_grammar.py` | Construction learning ("mouth" - output side, thin entry) |
+| `construction_schema.py` | Hyperparameters + ExpressionInstance + Construction class |
+| `construction_utils.py` | Standalone helper functions |
 | `construction_parser.py` | Construction parsing ("ear" - input side, three-layer parsing) |
 | `construction_learning.py` | Learn constructions from input (3-fold efficiency) |
 | `source_profiler.py` | Other modeling (familiarity / trust / status_belief) |
@@ -429,6 +454,7 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 | `state_pattern_memory.py` | **Internal symbol emergence**: hit >=3 forges internal symbols (e.g. "null-curious-lonely") |
 | `somatic_self_awareness.py` | **Somatic meta-awareness**: somatic decoding -> self-reference -> awareness intensity modulation |
 | `narrative_fragments.py` | **Narrative fragments**: action self-reference / causal narrative / state trajectory, softmax sampling |
+| `narrative_context.py` | Context and lookup-table construction for narrative fragment scoring |
 | `bge_analyzer.py` | BGE-small-zh-v1.5 embedding anchor matching (LLM-replacement approach) |
 | `concept_graph.py` | Concept graph: somatic words -> material/force/shape/abstract attribute combinations |
 | `input_packet.py` | Input packet: topic_anchor / relational_direction / social_intent |
@@ -436,12 +462,16 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 | `syntax_parser.py` | Lightweight syntactic analysis: subject-predicate-object + SVO + negation/question |
 | `expression_feedback.py` | **Expression feedback loop**: drive -> expression -> external response -> need satisfaction -> reinforcement/weakening |
 | `interpretation_competition.py` | **Interpretation competition**: competitiveness = experience_strength * f(state) * conversion_coefficient, tension suspension permeates output |
+| `interpretation_schema.py` | Competition dataclass definitions (ExperienceCandidate, CompetitionResult) |
+| `interpretation_compute.py` | Scoring & candidate building |
 | `delayed_understanding.py` | **Delayed understanding**: below-threshold confidence enters pending queue, awaits triggering activation |
 | `preoccupation_engine.py` | **Preoccupation system**: worry/miss/anticipate/anxious/nostalgic/curious - thoughts with object and time span |
 | `social_comprehension.py` | Understand sibling channel input, generate resonance and credit quenching |
 | `stereotype_tree.py` | **Stereotype tree**: hierarchical speaker cognitive structure (category->region->situation->individual) |
-| `stereotype_learner.py` | **Stereotype learner**: extract speaker characteristic labels from dialogue |
-| `teacher.py` | Teaching module: select most matching concept from lexicon to generate reflective sentences |
+| `stereotype_learner.py` | **Stereotype learner**: extract speaker characteristic labels (thin entry) |
+| `stereotype_markers.py` | Linguistic marker constants |
+| `stereotype_memory.py` | MEMORY.md tag extraction and tree initialization |
+| `teacher.py` | Teaching module |
 | `teacher_lexicon.py` | Teacher lexicon: concept -> somatic entry -> her words -> reflective sentences |
 | `mirror.py` | Mirror learning, build own version of understanding |
 | `five_rights.py` | **Six sovereignty controllers**: self-closure right / boredom right / misunderstanding right / forgetting right / contradiction right / physical gravity |
@@ -453,7 +483,7 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 ### New Core Mechanisms
 
 - **Expression feedback loop** (`expression_feedback.py`): drive -> expression -> external response -> need satisfaction -> reinforcement/weakening. Solves the "self-deception" problem.
-- **Interpretation competition** (`interpretation_competition.py`): multiple experiences competing in parallel, tension_level permeates language output
+- **Interpretation competition** (`interpretation_competition.py` + `interpretation_schema.py` + `interpretation_compute.py`): multiple experiences competing in parallel, tension_level permeates language output
 - **Delayed understanding** (`delayed_understanding.py`): below-threshold understanding enters pending queue, awaits similar input activation
 - **Preoccupation system** (`preoccupation_engine.py`): worry/miss/anticipate/anxious/nostalgic/curious - thoughts with object and time span
 - **Rumination layer** (`reflection_layer.py`): every 10 ticks uses LLM to deeply review dialogue, updates preoccupations and self-narrative
@@ -564,8 +594,12 @@ Records every tool usage to `logs/governance_audit.jsonl`
 | --- | --- |
 | `types.py` | XIAction / FailureRecord data structures, error classification |
 | `triggers.py` | Continuous trigger intensity evaluation |
-| `executor.py` | V7 executor (LLM decision + tool execution + failure handling + state write-back) |
+| `executor.py` | V7 executor entry, action parsing, voice file and manifest writing |
+| `executor_prompts.py` | Action prompt, state description, tool notice, and LLM call helpers |
+| `executor_feedback.py` | Tool failure analysis and somatic state feedback |
+| `executor_failure_resolution.py` | Failure resolution, fix-rule injection, and capability-gap analysis |
 | `tools.py` | Tool definitions (TOOL_DEFINITIONS) |
+| `tools_nl_extractors.py` | Natural-language tool intent extraction helpers |
 | `reach.py` | reach_out knocking mechanism |
 | `agent_tools/registry.py` | Tool registry + execute_tool_call |
 | `agent_tools/filesystem.py` | File operation tool set |
@@ -607,6 +641,8 @@ Records every tool usage to `logs/governance_audit.jsonl`
 | `rules.py` | Rule and snapshot data structures |
 | `defaults.py` | Default parameters |
 | `induct.py` | Induction (v11.2 prediction-error driven) |
+| `induct_helpers.py` | Helper functions for induction (generators, pruning, formatters) |
+| `induct_test.py` | Test entry point |
 | `verify.py` | Verification (Bayesian learning rate) |
 | `decay.py` | Decay (endocrine regulation + stability protection) |
 | `merge.py` | Merge (O(N) incremental embedding similarity) |
@@ -671,6 +707,7 @@ energy = total compute
 | `compute_connection.py` | Connection depth / loneliness goals |
 | `dopamine_tone.py` | Dopamine tone |
 | `oxytocin_signal.py` | Oxytocin tone (three-gate trigger + natural decay) |
+| `quenching/` | Six-channel quenching sub-package |
 
 ---
 
@@ -696,7 +733,12 @@ energy = total compute
 | --- | --- |
 | `episodes_db.py` | SQLite event log (always writes first) |
 | `insula_hub.py` | Visceral sensation center (topological indicators -> somatic markers) |
-| `tetramem_adapter.py` | TetraMem external memory service adapter |
+| `tetramem_adapter.py` | TetraMem HTTP adapter (external memory service) |
+| `tetramem_persistence.py` | Fallback persistence layer (local JSON read/write) |
+| `insights_db.py` | Insights DB init & path management |
+| `insights_schema.py` | Insight dataclass & field extraction |
+| `insights_api.py` | Insights read/write API |
+| `insights.py` | Insights entry (re-exports) |
 
 ### Core Table Schema (episodes.db)
 
@@ -749,7 +791,8 @@ CREATE TABLE episodes (
 | `behavior_vector.py` | Regularized behavior vector |
 | `state_to_context.py` | State -> situation description generator |
 | `drive_vector_field.py` | V6 drive vector field (7-dim + antagonism + continuous phase transition) |
-| `integrity_monitor.py` | Integrity monitoring (scans expression/perception/cognition/continuity four regions) |
+| `drive_tables.py` | Constants table (DRIVE_DIMS, antagonism matrix, math tools) |
+| `integrity_monitor.py` | Integrity monitoring | (scans expression/perception/cognition/continuity four regions) |
 | `integrity_signal.py` | Integrity change signal generation (active_harm / drive_delta / behavior_bias) |
 | `self_binding.py` | Self-binding strength calculation (frequency + perturbation_depth) |
 
@@ -1061,4 +1104,4 @@ When modifying these areas, **you must update** this index and the corresponding
 
 ---
 
-*Last updated: 2026-05-30*
+*Last updated: 2026-06-07*
