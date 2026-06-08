@@ -6,13 +6,13 @@ structured as a long-running process with internal state, memory, background
 ticks, language modules, and optional tool execution.
 
 This repository is useful to review as an engineering portfolio project because
-it shows system design work across daemon architecture, state modeling,
+it shows system design work across background runtime orchestration, state modeling,
 modularization, memory, language, tool execution, testing, and multi-agent
 development workflow.
 
 ## What I Built
 
-- A Python daemon that advances an entity state over time and exposes IPC/HTTP endpoints.
+- A Python background runtime that advances entity state over time and exposes IPC/HTTP endpoints.
 - A multi-stage cognitive pipeline for perception, thinking, language, state update, and persistence.
 - A continuous state model for variables such as fatigue, stress, curiosity, loneliness, boredom, and unresolved tension.
 - An autonomous action system that can decide to reach out, search, browse, write files, or call tools.
@@ -27,7 +27,7 @@ If you only have a few minutes, start here:
 | What to inspect | Why it matters |
 | --- | --- |
 | `src/daemon/tick_engine.py` | Main background tick orchestration, now split below the 400-line module limit |
-| `src/daemon/` | Daemon helpers for input, status, action execution, maintenance, reading, source tracking, and HTTP/chat handling |
+| `src/daemon/` | Background runtime helpers for input, status, action execution, maintenance, reading, source tracking, and HTTP/chat handling |
 | `src/action_system/` | Autonomous action execution, tool parsing, feedback, and failure handling |
 | `src/language_training.py` + `src/language_anchor_match.py` | Anchor-based language training and expression matching |
 | `src/language_system/narrative_fragments.py` + `narrative_context.py` | Narrative expression scoring and context construction |
@@ -36,9 +36,9 @@ If you only have a few minutes, start here:
 
 ## Technical Highlights
 
-### Persistent Daemon
+### Background Runtime
 
-The daemon is responsible for keeping the runtime alive outside direct chat
+The runtime service is responsible for keeping XIA moving outside direct chat
 requests. It handles:
 
 - background ticks
@@ -141,7 +141,7 @@ daemon.py
         +--> tick_engine.py
         |       |
         |       +--> pipeline_runner
-        |       +--> daemon maintenance helpers
+        |       +--> runtime maintenance helpers
         |       +--> action execution
         |       +--> source tracking
         |       +--> memory/world-model updates
@@ -163,7 +163,7 @@ pipeline_runner
 
 | Area | Purpose |
 | --- | --- |
-| `src/daemon/` | Long-running process, ticks, IPC/HTTP, autonomous wiring |
+| `src/daemon/` | Background runtime process, ticks, IPC/HTTP, autonomous wiring |
 | `src/pipeline_runner/` | Cognitive pipeline orchestration |
 | `src/drive_system/` | Drive computation and pressure signals |
 | `src/state_update/` | State transition and write-back |
@@ -178,7 +178,7 @@ pipeline_runner
 
 ## Engineering Work Demonstrated
 
-- Designed and maintained a long-running daemon with background state ticks.
+- Designed and maintained a background runtime with persistent state ticks.
 - Split oversized files into focused modules while preserving public behavior.
 - Added system documentation to support agent-assisted development.
 - Maintained task packages with specs, plans, validation, and review notes.
@@ -210,7 +210,7 @@ Requirements:
 - Node.js 18+ if using the optional desktop status UI
 - Optional LLM provider configuration via `.env`
 
-Daemon:
+Background runtime:
 
 ```powershell
 pip install -r requirements.txt
@@ -234,7 +234,8 @@ subsystem boundaries, and refactoring/validation workflow. Some older modules
 are still being split and cleaned up.
 
 Recent cleanup reduced several large files below the project 400-line module
-limit, including daemon, action-system, narrative, and language-training files.
+limit, including background runtime, action-system, narrative, and
+language-training files.
 
 ## Author
 
