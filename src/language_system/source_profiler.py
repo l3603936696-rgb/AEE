@@ -1,10 +1,12 @@
 """
-Source Profiler — 他者建模：来源识别、状态历史、地位值（v2.0）
+Source Profiler — 他者建模：来源识别、状态历史、地位值（v2.1）
 
 不产生任何行为输出，只积累数据供后续层使用。
 
 source_id 规则：
-    "external"          ← 用户输入（_input_source == "external"）
+    "bcyq"              ← Owner 直接输入（external/ipc_chat + direct_chat）
+    "external"          ← 旧数据 / 未标识外部输入
+    "pasted_text:..."   ← 转贴或第三方内容（不污染 bcyq 桶）
     "sibling:<peer>"    ← 姐妹通道（_input_source == "sibling"，peer_name 来自 _sibling_channel）
     "none"              ← 不建档
 
@@ -15,7 +17,9 @@ source_id 规则：
 """
 
 import math
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
+
+from .source_identity import build_source_identity, source_id_from_identity
 
 FAMILIARITY_SCALE = 50.0    # 半饱和：50 次交互 → familiarity ≈ 0.63
 TRUST_SCALE       = 0.05    # trust sigmoid 温度参数
@@ -33,15 +37,31 @@ def _default_profile() -> dict:
         "delta_log": [],
         "status_belief": 0.0,           # 地位值：我对这个人是否重要，零基线
         "status_interaction_count": 0,  # 独立计数，用于学习率衰减
+        "speaker_id": "",
+        "content_origin_counts": {},
     }
 
 
-def get_source_id(input_source: str, entity) -> str:
+def get_source_identity(
+    input_source: str,
+    entity,
+    speaker_id: Optional[str] = None,
+    content_origin: Optional[str] = None,
+    author_id: Optional[str] = None,
+) -> Dict[str, str]:
+    """把输入通道映射为 speaker/content/source 三层身份。"""
+    return build_source_identity(
+        input_source=input_source,
+        entity=entity,
+        speaker_id=speaker_id,
+        content_origin=content_origin,
+        author_id=author_id,
+    )
+
+
+def get_source_id(input_source: str, entity, **kwargs) -> str:
     """把 _input_source 映射到持久化用的 source_id。"""
-    if input_source == "sibling":
-        peer = getattr(entity, "_sibling_channel", {}).get("peer_name", "unknown")
-        return f"sibling:{peer}"
-    return input_source  # "external" 或 "none"
+    return source_id_from_identity(get_source_identity(input_source, entity, **kwargs))
 
 
 def update_profile(
@@ -51,6 +71,7 @@ def update_profile(
     social_intent: str,
     causal_delta: dict,
     tick: int,
+    source_identity: Optional[Dict[str, str]] = None,
 ) -> None:
     """更新 source_id 对应的 profile（in-place）。"""
     profiles = getattr(entity, "_source_profiles", None)
@@ -59,8 +80,14 @@ def update_profile(
         profiles = entity._source_profiles
 
     p = profiles.setdefault(source_id, _default_profile())
+    p.setdefault("speaker_id", "")
+    p.setdefault("content_origin_counts", {})
     p["interaction_count"] += 1
     p["last_tick"] = tick
+    _identity = source_identity or {"speaker_id": source_id, "content_origin": "unknown"}
+    p["speaker_id"] = str(_identity.get("speaker_id", source_id))
+    _origin = str(_identity.get("content_origin", "unknown"))
+    p["content_origin_counts"][_origin] = p["content_origin_counts"].get(_origin, 0) + 1
 
     for word, _ in (cx_recognized_words or []):
         p["word_counts"][word] = p["word_counts"].get(word, 0) + 1

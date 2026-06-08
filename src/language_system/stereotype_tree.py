@@ -26,130 +26,15 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-
-def infer_cognitive_tags(features: Dict[str, float]) -> List[str]:
-    """从特征值推断认知风格标签。
-    
-    使用绝对阈值和相对比较两种方式推断：
-    - 绝对阈值：用于高确信度的标签（如 philosophical_ratio > 0.6）
-    - 相对比较：比较不同维度的特征值，找出最突出的那个
-    """
-    tags = []
-    if not features:
-        return tags
-
-    # 绝对阈值推断
-    if features.get("philosophical_ratio", 0) > 0.6:
-        tags.append("高哲学性")
-    elif features.get("philosophical_ratio", 0) < 0.3:
-        tags.append("低哲学性")
-
-    if features.get("metacognitive_ratio", 0) > 0.4:
-        tags.append("高元认知")
-    elif features.get("metacognitive_ratio", 0) < 0.2:
-        tags.append("低元认知")
-
-    if features.get("first_person_ratio", 0) > 0.5:
-        tags.append("高第一人称")
-    elif features.get("first_person_ratio", 0) < 0.3:
-        tags.append("低第一人称")
-
-    if features.get("emotional_variance", 0) > 0.4:
-        tags.append("高情感表达")
-    elif features.get("emotional_variance", 0) < 0.2:
-        tags.append("低情感表达")
-
-    if features.get("analytical_marker_ratio", 0) > 0.3:
-        tags.append("分析型")
-    elif features.get("analytical_marker_ratio", 0) < 0.15:
-        tags.append("直觉型")
-
-    # 相对比较推断（同一维度内的两极对立）
-    pairs = [
-        ("philosophical_ratio", "高哲学性", "低哲学性"),
-        ("metacognitive_ratio", "高元认知", "低元认知"),
-        ("emotional_variance", "高情感表达", "低情感表达"),
-        ("analytical_marker_ratio", "分析型", "直觉型"),
-    ]
-
-    for dim, high_tag, low_tag in pairs:
-        val = features.get(dim, 0.5)
-        # 已在绝对阈值中添加
-        if high_tag in tags or low_tag in tags:
-            continue
-        # 相对极端推断
-        if val > 0.65:
-            tags.append(high_tag)
-        elif val < 0.35:
-            tags.append(low_tag)
-
-    return tags
-
-
-def find_opposite_pairs(tags_a: List[str], tags_b: List[str]) -> List[tuple]:
-    """从两个标签集合中找出互斥的认知风格对立对。
-    
-    Returns: List of (tag_a, tag_b) tuples that form opposite pairs.
-    """
-    opposites = []
-    for op_a, op_b in COGNITIVE_STYLE_OPPOSITES:
-        # 检查 op_a 是否在 tags_a，op_b 是否在 tags_b
-        if op_a in tags_a and op_b in tags_b:
-            opposites.append((op_a, op_b))
-        # 检查反向（tag_b 里的对立对）
-        elif op_b in tags_a and op_a in tags_b:
-            opposites.append((op_b, op_a))
-    return opposites
-
-
-# ============================================================================
-# 常量
-# ============================================================================
-
-# 层级名称（按深度）
-DEPTH_NAMES = ("category", "region", "situation", "individual")
-
-# 固定深度
-TREE_DEPTH = 4
-
-# 特征提取维度
-FEATURE_DIMS = frozenset({
-    "avg_sentence_len",        # 平均句长
-    "question_ratio",          # 问句比例
-    "philosophical_ratio",     # 哲学性陈述比例
-    "emotional_variance",      # 情感波动幅度
-    "metacognitive_ratio",    # 元认知词（"我觉得"、"可能"、"也许"）比例
-    "first_person_ratio",      # 第一人称词比例
-    "analytical_marker_ratio", # 分析性标记（"因为"、"所以"、"但是"）比例
-    "concrete_vs_abstract",   # 具体 vs 抽象词比例
-})
-
-# 认知风格对立对（用于 fork 时修正父节点标签）
-COGNITIVE_STYLE_OPPOSITES = [
-    ("理性型", "感性型"),
-    ("逻辑型", "直觉型"),
-    ("分析型", "整体型"),
-    ("内向型", "外向型"),
-    ("谨慎型", "冒险型"),
-    ("高哲学性", "低哲学性"),
-    ("高元认知", "低元认知"),
-    ("高第一人称", "低第一人称"),
-    ("高情感表达", "低情感表达"),
-]
-
-
-# 默认特征权重（高层节点的初始权重）
-DEFAULT_FEATURE_WEIGHTS = {
-    "avg_sentence_len": 0.5,
-    "question_ratio": 0.5,
-    "philosophical_ratio": 0.5,
-    "emotional_variance": 0.5,
-    "metacognitive_ratio": 0.5,
-    "first_person_ratio": 0.5,
-    "analytical_marker_ratio": 0.5,
-    "concrete_vs_abstract": 0.5,
-}
-
+from .stereotype_tree_schema import (
+    DEPTH_NAMES,
+    TREE_DEPTH,
+    FEATURE_DIMS,
+    COGNITIVE_STYLE_OPPOSITES,
+    DEFAULT_FEATURE_WEIGHTS,
+    infer_cognitive_tags,
+    find_opposite_pairs,
+)
 
 # ============================================================================
 # 数据结构
@@ -298,68 +183,75 @@ class StereotypeTree:
         speaker_id: str,
         initial_tags: Optional[List[str]] = None,
         initial_features: Optional[Dict[str, float]] = None,
+        path_layers: Optional[List[str]] = None,
     ) -> StereotypeNode:
         """
         添加一个新的个体叶子节点。
 
-        如果说话者已存在，则更新其标签和特征。
+        如果说话者已存在，**只更新标签和特征，不重建路径**——防止重复节点爆炸。
 
         参数：
             speaker_id    : 说话者 ID
             initial_tags  : 初始标签（可为空）
             initial_features: 初始特征权重（可为空）
-
+            path_layers   : 有序语义层级 [category, region, situation]，
+                            传入时用 _build_path_from_layers（确定性路径）；
+                            不传时退化为 _build_path_from_tags（向后兼容）。
         返回：
             新建或更新的节点
         """
-        # 如果已存在，先收集原有的特征做 EMA 平滑
-        existing_node = self._individuals.get(speaker_id)
-        existing_features = {}
-        if existing_node:
-            existing_features = dict(existing_node.feature_weights)
-            existing_tags = list(existing_node.tags)
-        else:
-            existing_tags = []
+        # ── 已存在：只更新，绝不重建路径 ──────────────────────────────────────
+        if speaker_id in self._individuals:
+            leaf_node = self._individuals[speaker_id]
+            # 特征 EMA 更新
+            if initial_features:
+                for k, v in initial_features.items():
+                    if k in FEATURE_DIMS:
+                        old_v = leaf_node.feature_weights.get(k, 0.5)
+                        leaf_node.feature_weights[k] = 0.7 * old_v + 0.3 * float(v)
+            # 标签有序去重追加
+            seen = set(leaf_node.tags)
+            for t in (initial_tags or []):
+                if t and t != speaker_id and t not in seen:
+                    leaf_node.tags.append(t)
+                    seen.add(t)
+            leaf_node.confidence = min(1.0, leaf_node.confidence + 0.05)
+            logger.debug(f"[StereotypeTree] update_individual: {speaker_id}")
+            return leaf_node
 
-        # 合并特征（EMA）
+        # ── 新建：构建确定性路径 ───────────────────────────────────────────────
+        # 过滤掉 speaker_id 自身（叶子节点名，不混入路径标签）
+        flat_tags = [t for t in (initial_tags or []) if t != speaker_id]
+
+        if path_layers:
+            path = self._build_path_from_layers(path_layers, speaker_id)
+        else:
+            path = self._build_path_from_tags(flat_tags, speaker_id)
+
+        # 初始特征
         merged_features = dict(DEFAULT_FEATURE_WEIGHTS)
-        if existing_features:
-            for k in FEATURE_DIMS:
-                if k in existing_features:
-                    merged_features[k] = 0.7 * existing_features[k]
         if initial_features:
             for k, v in initial_features.items():
                 if k in FEATURE_DIMS:
-                    merged_features[k] += 0.3 * v
+                    merged_features[k] = 0.7 * merged_features.get(k, 0.5) + 0.3 * float(v)
 
-        # 合并标签（去重，保留新标签）
-        # 过滤掉 speaker_id 自身（它会作为叶子节点名，不混入类别路径）
-        merged_tags = [t for t in (set(existing_tags + (initial_tags or []))) if t != speaker_id]
-
-        # 构建路径：/category/region/situation/speaker_id
-        path = self._build_path_from_tags(merged_tags, speaker_id)
-
-        # 找到或创建父链
         parent_node = self._ensure_path(path)
-        parent_node.tags = list(set(parent_node.tags + merged_tags))
+        # 有序去重更新父节点标签
+        seen_parent = set(parent_node.tags)
+        for t in flat_tags:
+            if t not in seen_parent:
+                parent_node.tags.append(t)
+                seen_parent.add(t)
 
-        # 创建或更新叶子节点
-        if speaker_id not in self._individuals:
-            leaf_node = StereotypeNode(
-                path=path.rstrip("/") + f"/{speaker_id}",
-                depth=TREE_DEPTH,
-                tags=[speaker_id],
-                feature_weights=merged_features,
-                confidence=0.6,  # 新节点初始置信度
-            )
-            # 挂到父节点的 children
-            parent_node.children[speaker_id] = leaf_node
-            self._individuals[speaker_id] = leaf_node
-        else:
-            leaf_node = self._individuals[speaker_id]
-            leaf_node.feature_weights = merged_features
-            leaf_node.tags = list(set(leaf_node.tags + (initial_tags or [])))
-            leaf_node.confidence = min(1.0, leaf_node.confidence + 0.05)
+        leaf_node = StereotypeNode(
+            path=path.rstrip("/") + f"/{speaker_id}",
+            depth=TREE_DEPTH,
+            tags=[speaker_id],
+            feature_weights=merged_features,
+            confidence=0.6,
+        )
+        parent_node.children[speaker_id] = leaf_node
+        self._individuals[speaker_id] = leaf_node
 
         logger.debug(f"[StereotypeTree] add_individual: {speaker_id}, path={path}")
         return leaf_node
@@ -605,13 +497,19 @@ class StereotypeTree:
         return current
 
     def _build_path_from_tags(self, tags: List[str], speaker_id: str) -> str:
-        """从标签构建路径。
-
-        简化版本：按顺序取前 3 个标签 + speaker_id
-        """
+        """从标签构建路径（向后兼容，取前 3 个标签）。"""
         selected = tags[:3]
         while len(selected) < 3:
             selected.append("general")
+        return "/" + "/".join(selected) + "/" + speaker_id
+
+    def _build_path_from_layers(self, layers: List[str], speaker_id: str) -> str:
+        """从有序的语义层级列表构建确定性路径。
+
+        layers 应按 [category, region, situation] 顺序传入，
+        由调用方保证顺序（不依赖 set 的迭代序）。
+        """
+        selected = (list(layers) + ["general", "general", "general"])[:3]
         return "/" + "/".join(selected) + "/" + speaker_id
 
     @staticmethod

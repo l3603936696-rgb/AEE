@@ -3,46 +3,29 @@ Sentence Composer — 句子组合模块（v1.0）
 
 将锚点词组合成完整中文短句的模板库 + softmax 采样系统。
 
-设计原则：
-    1. 全部连续：无 if-else，无比较运算符（> < >= <=）
-    2. 模板通过连续函数（exp / max / 1-x）计算状态匹配度
-    3. softmax 随机采样，不是取最高分——保持表达多样性
-    4. 语气自然口语化，有余韵（"……" "啊" "呢" 等）
-
-注意：部分模板不包含 {anchor} 槽（如"好想有人陪我说说话啊……"、"还好吧……"），
-这些模板完全独立描述状态，传入的 anchor 参数被忽略。这是合理的设计，
-这些模板本身就是完整句式，不依赖锚点词。
-
-调用示例：
-    from .sentence_composer import compose_sentence, PATTERNS
-    sentence = compose_sentence("累", state_dict, connector="唉")
+子模块：
+    sentence_composer_schema.py — 超参 + 数学辅助函数
+    sentence_composer.py — 模板库 + 核心组合函数
 """
 
 import logging
-import math
 import random
 from typing import Callable, Dict, List, Optional, Tuple
 
+from .sentence_composer_schema import (
+    _COMPOSE_TEMP_BASE,
+    _COMPOSE_TEMP_BOREDOM_GAIN,
+    _ANCHOR_USE_BONUS,
+    _ANCHOR_STRENGTH_GAIN,
+    _ANCHOR_POS_WEIGHT,
+    _STRUCTURE_BONUS_SCALE,
+    _template_structure_score,
+    _g,
+    _anchor_penalty,
+    _softmax_sample,
+)
+
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# 调参常量
-# ============================================================================
-
-_COMPOSE_TEMP_BASE         = 0.40   # compose_sentence 默认 softmax temperature
-_COMPOSE_TEMP_BOREDOM_GAIN = 0.50   # boredom=1 时 temperature 增量（上限 0.90）
-_ANCHOR_USE_BONUS          = 0.12   # 使用锚点词的模板加分
-_ANCHOR_STRENGTH_GAIN      = 1.0    # 锚点选词强度对"使用锚点奖励"的放大系数（种子值，待标定）
-                                    # 锚点被选得越强(anchor_score高)，带锚点模板越压过无锚点罐头句
-_ANCHOR_POS_WEIGHT: Dict[str, float] = {   # anchor_pos → 是否真正使用锚点词
-    "none":  0.0,
-    "adj":   1.0,
-    "head":  1.0,
-    "tail":  1.0,
-    "embed": 1.0,
-    "infix": 1.0,
-}
 
 
 # ============================================================================
@@ -50,27 +33,6 @@ _ANCHOR_POS_WEIGHT: Dict[str, float] = {   # anchor_pos → 是否真正使用�
 # ============================================================================
 
 PATTERNS: List[Dict] = []
-
-
-def _g(x: float, mu: float, sigma: float = 0.20) -> float:
-    """高斯评分：x 越接近 mu 得分越高。返回 (0, 1]。"""
-    return math.exp(-0.5 * (abs(x - mu) / max(sigma, 0.001)) ** 2)
-
-
-def _anchor_penalty(anchor_len: int, pos: str) -> float:
-    """
-    锚词语法不兼容惩罚（加法偏移，不是乘法）。
-    返回值从 raw_score 中减去，在 softmax 之前生效。
-
-    pos="tail" 且 len=1 → 减 5.0（softmax 里 exp(-5/0.4) ≈ 0，基本不可能）
-    pos="tail" 且 len=2 → 减 1.0（显著降低但不禁止）
-    pos="tail" 且 len>=3 → 减 0（自然，不惩罚）
-    其他位置 → 减 0
-    """
-    if pos != "tail":
-        return 0.0
-    # len=1→5.0, len=2→1.0, len=3→0.1, len>=4→0.0
-    return max(0.0, 5.0 * math.exp(-1.6 * max(0, anchor_len - 1)))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -947,7 +909,6 @@ def _softmax_sample(scores: List[float], temperature: float = 0.4) -> int:
     """
     if not scores:
         return 0
-
     max_s = max(scores)
     weights = [math.exp((s - max_s) / max(temperature, 0.01)) for s in scores]
     total = sum(weights)
@@ -1024,7 +985,12 @@ def compose_sentence(
 
         if learned_weights and i in learned_weights:
             lw = learned_weights[i]
-            score += sum(w * state.get(dim, 0.0) for dim, w in lw.items())
+            # 防御未归一化维度（time_since_last_*）撑爆学习权重贡献：
+            # state 值 clamp 到 [0,1]，与其他评分项保持同一量纲，避免天文数字。
+            score += sum(
+                w * max(0.0, min(1.0, state.get(dim, 0.0)))
+                for dim, w in lw.items()
+            )
 
         pos = p.get("anchor_pos", "head")
         score -= _anchor_penalty(len(anchor), pos)
@@ -1033,6 +999,9 @@ def compose_sentence(
 
         if template_efficiency and i in template_efficiency:
             score += min(template_efficiency[i], 0.5)
+
+        # 结构性加成：带逻辑连接词的模板持续获得 softmax 偏向
+        score += _STRUCTURE_BONUS_SCALE * _template_structure_score(p.get("template", ""))
 
         raw_scores.append(score)
 

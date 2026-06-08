@@ -79,8 +79,7 @@ def analyze_snapshots(
 
     # 3. 状态锁死检测
     LOCK_DIMS = {
-        "approach_drive": 0.5, "avoid_drive": 0.5,
-        "stress": 0.1, "somatic_tone": 0.0,
+        "stress": 0.1,
         "energy": 0.5, "loneliness": 0.3,
     }
     stuck_count: Dict[str, int] = {}

@@ -23,102 +23,31 @@ Construction Grammar — 构式习得（v1.0）
     实例 (Instance)       = 一次具体的成功表达
 """
 
+from .construction_schema import (
+    ExpressionInstance,
+    Construction,
+    _drive_match_score,
+    _MAX_INSTANCES,
+    _MIN_INSTANCES_FOR_SCHEMA,
+    _MIN_EFFICIENCY,
+    _BASELINE_EFFICIENCY,
+    _STRENGTH_DECAY,
+    _STRENGTH_BOOST,
+    _MAX_CONSTRUCTIONS,
+    _MAX_FILLERS_PER_SLOT,
+    _SLOT_AFFINITY_DECAY,
+    _MIN_STRENGTH,
+)
+from .construction_utils import _infer_anchor_pos
+
 import logging
-import math
 import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
-# ─── 超参 ───────────────────────────────────────────────────────────────────
-_MAX_INSTANCES = 500         # 实例缓冲区上限
-_MIN_INSTANCES_FOR_SCHEMA = 3  # 抽取构式的最少实例数
-_MIN_EFFICIENCY = 0.0        # 记录实例的最低效率门槛（v12: 0.0=全量记录，由_update_construction区分正负样本）
-_BASELINE_EFFICIENCY = 0.05  # 效率中位参考值，用于区分正负样本的分界
-_STRENGTH_DECAY = 0.995      # 每次 tick 构式强度衰减
-_STRENGTH_BOOST = 0.15       # 成功使用一次的强度增益
-_MAX_CONSTRUCTIONS = 40      # 构式库上限
-_MAX_FILLERS_PER_SLOT = 30   # 每个槽位最多记住多少个填充词
-_SLOT_AFFINITY_DECAY = 0.98  # 槽位亲和度衰减
-_MIN_STRENGTH = 0.01         # 低于此强度的构式被清除
-
-
-# ─── 数据结构 ────────────────────────────────────────────────────────────────
-
-class ExpressionInstance:
-    """一次成功表达的记录。"""
-    __slots__ = ("structure", "fillers", "drive_state", "efficiency", "tick", "action_context", "is_heard")
-
-    def __init__(
-        self,
-        structure: str,       # e.g. "好{0}啊……"
-        fillers: List[str],   # e.g. ["累"]
-        drive_state: Dict[str, float],
-        efficiency: float,
-        tick: int,
-        action_context: str = "",
-        is_heard: bool = False,  # 来自阅读/听到的，非原创表达
-    ):
-        self.structure = structure
-        self.fillers = fillers
-        self.drive_state = drive_state
-        self.efficiency = efficiency
-        self.tick = tick
-        self.action_context = action_context
-        self.is_heard = is_heard
-
-
-class Construction:
-    """一个学到的构式。"""
-    __slots__ = (
-        "schema", "slot_fillers", "slot_affinity",
-        "drive_profile", "strength", "use_count",
-        "born_tick", "last_used_tick",
-        "action_profile",
-        "heard_ratio",  # 二手实例占比：0=原创，1=纯二手（影响强化奖励折扣）
-    )
-
-    def __init__(self, schema: str, born_tick: int = 0):
-        self.schema = schema              # e.g. "好{0}啊……"
-        self.slot_fillers: Dict[int, Dict[str, float]] = {}   # slot_idx → {word: affinity}
-        self.slot_affinity: Dict[int, int] = {}               # slot_idx → total fill count
-        self.drive_profile: Dict[str, float] = {}             # 效率加权的驱动力均值
-        self.strength: float = 0.1        # 构式强度（从低起步）
-        self.use_count: int = 0
-        self.born_tick: int = born_tick
-        self.last_used_tick: int = born_tick
-        self.action_profile: Dict[str, int] = {}  # {action_type: use_count}
-        self.heard_ratio: float = 0.0     # 二手实例占比（影响强化奖励折扣）
-
-    def to_dict(self) -> dict:
-        return {
-            "schema": self.schema,
-            "slot_fillers": {
-                str(k): dict(v) for k, v in self.slot_fillers.items()
-            },
-            "drive_profile": dict(self.drive_profile),
-            "strength": self.strength,
-            "use_count": self.use_count,
-            "born_tick": self.born_tick,
-            "last_used_tick": self.last_used_tick,
-            "action_profile": dict(self.action_profile),
-            "heard_ratio": self.heard_ratio,
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "Construction":
-        c = cls(d["schema"], d.get("born_tick", 0))
-        c.slot_fillers = {
-            int(k): dict(v) for k, v in d.get("slot_fillers", {}).items()
-        }
-        c.drive_profile = dict(d.get("drive_profile", {}))
-        c.strength = d.get("strength", 0.1)
-        c.use_count = d.get("use_count", 0)
-        c.last_used_tick = d.get("last_used_tick", 0)
-        c.action_profile = dict(d.get("action_profile", {}))
-        c.heard_ratio = d.get("heard_ratio", 0.0)
-        return c
+# Hyperparameters and data structures are in construction_schema.py
 
 
 # ─── 构式习得器 ──────────────────────────────────────────────────────────────
@@ -666,43 +595,3 @@ class ConstructionLearner:
             ],
             "instance_buffer": len(self._instances),
         }
-
-
-# ─── 辅助函数 ────────────────────────────────────────────────────────────────
-
-def _drive_match_score(
-    current: Dict[str, float],
-    profile: Dict[str, float],
-) -> float:
-    """当前驱动力状态和构式驱动力画像的匹配度（余弦相似度）。"""
-    if not profile:
-        return 0.5  # 无画像时中性分
-
-    dot = 0.0
-    norm_c = 0.0
-    norm_p = 0.0
-    for dim in profile:
-        c = float(current.get(dim, 0.5))
-        p = float(profile[dim])
-        dot += c * p
-        norm_c += c * c
-        norm_p += p * p
-
-    denom = math.sqrt(max(norm_c, 1e-9)) * math.sqrt(max(norm_p, 1e-9))
-    return dot / denom
-
-
-def _infer_anchor_pos(template_str: str) -> str:
-    """从模板字符串推断 anchor 位置。"""
-    if "{anchor}" not in template_str:
-        return "none"
-    idx = template_str.index("{anchor}")
-    total = len(template_str)
-    # anchor 在前 1/3 → head，后 1/3 → tail，中间 → adj/embed
-    ratio = idx / max(total, 1)
-    if ratio < 0.3:
-        return "head"
-    elif ratio > 0.65:
-        return "tail"
-    else:
-        return "adj"

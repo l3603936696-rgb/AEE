@@ -144,16 +144,16 @@ def _llm_abstract_schemas(
     """
     调用 DeepSeek LLM 将短句抽象为 schema 模板。
 
-    接口：create_llm_callable() → DeepSeekProvider 实例
+    接口：create_wrapped_llm() → 带观测的 LLM callable
     签名：(system_prompt, user_prompt, temperature, max_tokens, timeout_ms) → (text, error)
     """
-    from ..llm.providers import create_llm_callable
+    from ..observability import create_wrapped_llm
 
     input_lines = "\n".join(f"句子：「{s}」" for s, _ in sentences)
     prompt = LLM_PROMPT_TEMPLATE + f"\n\n{input_lines}\n已知词汇：{warm_words[:10]}"
 
     try:
-        _llm = create_llm_callable()
+        _llm = create_wrapped_llm("sentence_extraction")
         response, err = _llm(
             system_prompt="你是一个语言学分析助手。",
             user_prompt=prompt,

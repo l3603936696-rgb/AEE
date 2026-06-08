@@ -19,6 +19,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from ..observability import observe
+
 _DIMS = ("curiosity", "info_hunger", "obsolescence_anxiety", "loneliness_drive", "fatigue_avoid")
 
 # 各维度激活时的中文标签（生成内部符号用）
@@ -388,6 +390,7 @@ def _bootstrap_spm(spm: "StatePatternMemory", current_tick: int) -> "StatePatter
 # tick_engine 集成接口
 # ============================================================================
 
+@observe("state_pattern_memory", category="language")
 def run_symbol_tick(
     entity,
     drive_vector: Dict[str, float],

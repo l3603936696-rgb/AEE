@@ -26,49 +26,16 @@ from .stereotype_tree import (
     ensure_tree,
     StereotypeContext,
 )
+from .stereotype_markers import (
+    FEATURE_WINDOW,
+    PHILOSOPHICAL_MARKERS,
+    METACOGNITIVE_MARKERS,
+    ANALYTICAL_MARKERS,
+    FIRST_PERSON_MARKERS,
+    EMOTIONAL_MARKERS,
+)
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# 常量
-# ============================================================================
-
-# 特征提取的统计窗口
-FEATURE_WINDOW = 10  # 最近 N 条消息
-
-# 哲学性标记词
-PHILOSOPHICAL_MARKERS = frozenset({
-    "可能", "也许", "应该", "其实", "我觉得", "我认为",
-    "好像", "似乎", "大概", "或许", "究竟", "为什么",
-    "是不是", "是不是说", "什么意思", "怎么理解",
-})
-
-# 元认知标记词
-METACOGNITIVE_MARKERS = frozenset({
-    "我觉得", "我认为", "我以为", "我知道", "我不知道",
-    "你懂", "你理解", "你明白", "理解", "不清楚",
-    "记得", "忘了", "想起来", "不确定",
-})
-
-# 分析性标记词
-ANALYTICAL_MARKERS = frozenset({
-    "因为", "所以", "但是", "如果", "虽然", "然而",
-    "因此", "所以", "不过", "而且", "或者",
-    "首先", "然后", "最后", "总之", "也就是说",
-})
-
-# 第一人称标记词
-FIRST_PERSON_MARKERS = frozenset({
-    "我", "我们", "我的", "我们的", "我自己",
-})
-
-# 情感词（简化版）
-EMOTIONAL_MARKERS = frozenset({
-    "开心", "高兴", "快乐", "舒服", "满足", "幸福",  # 正向
-    "难过", "伤心", "痛苦", "难受", "焦虑", "害怕", "生气", "愤怒",  # 负向
-    "啊", "呀", "呢", "吧", "哦", "嗯",  # 感叹/语气
-})
 
 
 # ============================================================================
@@ -410,95 +377,14 @@ class StereotypeLearner:
 # 便捷函数
 # ============================================================================
 
-# ============================================================================
-# MEMORY.md 标签提取（阶段一初始化）
-# ============================================================================
+from .stereotype_memory import (
+    extract_tags_from_memory as _extract_tags_from_memory,
+    init_tree_from_memory as _init_tree_from_memory,
+)
+
 
 def extract_tags_from_memory(memory_path: str = "MEMORY.md") -> Dict[str, List[str]]:
-    """
-    从 MEMORY.md 提取说话者的基础标签。
-
-    对应刻板印象树阶段一：粗粒度锚定。
-
-    提取维度：
-        - category   : 基础类别（大二学生）
-        - region     : 地区/文化（UTC+8）
-        - situation  : 社会情境（机械专业、民办本科、一人工公司）
-        - individual : 个体标识（bcyq）
-
-    参数：
-        memory_path: MEMORY.md 文件路径
-
-    返回：
-        {"category": [...], "region": [...], "situation": [...], "individual": [...]}
-    """
-    import os
-
-    if not os.path.exists(memory_path):
-        return {}
-
-    try:
-        with open(memory_path, "r", encoding="utf-8") as f:
-            content = f.read()
-    except Exception:
-        return {}
-
-    tags = {
-        "category": [],
-        "region": [],
-        "situation": [],
-        "individual": [],
-    }
-
-    lines = content.split("\n")
-
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-
-        # 身份标签
-        if "身份" in line or "bcyq" in line.lower():
-            if "bcyq" in line.lower():
-                tags["individual"].append("bcyq")
-
-        # 背景标签
-        if "背景" in line or "专业" in line:
-            if "机械" in line:
-                tags["situation"].append("理工科")
-                tags["situation"].append("机械专业")
-            if "大二" in line:
-                tags["category"].append("大学生")
-                tags["category"].append("大二学生")
-            if "民办" in line:
-                tags["situation"].append("民办本科")
-            if "二本" in line:
-                tags["situation"].append("二本")
-
-        # 时区标签
-        if "UTC" in line or "时区" in line:
-            if "UTC+8" in line:
-                tags["region"].append("亚洲东部")
-                tags["region"].append("UTC+8")
-
-        # 项目标签
-        if "项目" in line or "XIA" in line:
-            tags["situation"].append("AI项目")
-            if "一人公司" in line:
-                tags["situation"].append("一人公司")
-
-        # 工作区标签
-        if "工作区" in line:
-            if "Windows" in line:
-                tags["region"].append("Windows用户")
-            if "WSL" in line:
-                tags["region"].append("WSL2用户")
-
-    # 去重
-    for key in tags:
-        tags[key] = list(dict.fromkeys(tags[key]))
-
-    return tags
+    return _extract_tags_from_memory(memory_path)
 
 
 def init_tree_from_memory(
@@ -506,37 +392,7 @@ def init_tree_from_memory(
     memory_path: str = "MEMORY.md",
     speaker_id: str = "bcyq",
 ) -> None:
-    """
-    从 MEMORY.md 提取标签，初始化说话者在刻板印象树中的位置。
-
-    对应刻板印象树阶段一：粗粒度锚定。
-    MEMORY 来的标签存入 node._category_tags（永不覆盖），用于跨个体匹配。
-    """
-    from .stereotype_tree import ensure_tree
-
-    tags = extract_tags_from_memory(memory_path)
-    if not tags or not any(tags.values()):
-        return
-
-    tree = ensure_tree(entity)
-    all_tags = []
-    for layer_tags in tags.values():
-        all_tags.extend(layer_tags)
-
-    # 去重但保持顺序
-    all_tags = list(dict.fromkeys(all_tags))
-
-    # 先 add_individual 创建节点
-    # 过滤掉 speaker_id 自身（它会作为叶子节点名，不应该混入类别标签）
-    filtered_tags = [t for t in all_tags if t != speaker_id]
-    node = tree.add_individual(
-        speaker_id=speaker_id,
-        initial_tags=filtered_tags,
-        initial_features=None,
-    )
-    # 把 MEMORY 来的类别标签锁入 _category_tags（永不覆盖）
-    if node and filtered_tags:
-        node._category_tags = list(filtered_tags)
+    return _init_tree_from_memory(entity, memory_path, speaker_id)
 
 
 def learn_speaker(
