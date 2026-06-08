@@ -23,6 +23,7 @@ def make_context(
     no_llm: bool = False,
     llm_callable: Optional[Any] = None,
     params_override: Optional[Dict] = None,
+    source_identity: Optional[Dict[str, str]] = None,
     debug: bool = False,
 ) -> PipelineContext:
     ctx = PipelineContext()
@@ -31,6 +32,8 @@ def make_context(
     ctx.no_llm = no_llm
     ctx.llm_callable = llm_callable
     ctx.params_override = params_override
+    ctx.source_identity = source_identity or {}
+    ctx._input_source = ctx.source_identity.get("input_source", "external")
     ctx.debug = debug
 
     # 预初始化跨阶段变量的默认值，防止后续阶段读取时 AttributeError

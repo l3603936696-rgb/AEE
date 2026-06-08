@@ -48,27 +48,22 @@ def run_stage(ctx, entity) -> None:
     _semantic_analyzer = ctx._semantic_analyzer
     _candidate_gen = ctx._candidate_gen
     _quenching = ctx._quenching
+    source_identity = getattr(ctx, "source_identity", {}) or {}
+    source_id = source_identity.get("source_id") or getattr(ctx, "_input_source", "external")
+    speaker_id = source_identity.get("speaker_id") or source_id
 
     # ---- Step 1.5: 刻板印象树剪枝（说话者上下文约束）----
     _stereotype_context = None
     if raw_input and str(raw_input).strip():
         try:
             from ...language_system.stereotype_tree import get_speaker_context, ensure_tree
-            from ...language_system.stereotype_learner import FeatureExtractor
-            # 获取说话者 ID（来自 ctx._input_source 或默认为 "external"）
-            source_id = getattr(ctx, "_input_source", "external")
-            # 快速提取输入特征
-            extractor = FeatureExtractor(window_size=1)
-            _input_features = extractor.extract_from_single_message(
-                str(raw_input),
-                float(semantic_packet.get("emotion", 0.0)) if semantic_packet else 0.0,
-            ) if semantic_packet else None
             # 获取说话者上下文
             tree = ensure_tree(entity)
-            _stereotype_context = tree.match(source_id, _input_features)
+            _stereotype_context = tree.match(speaker_id, None)
             if _stereotype_context:
                 _trace("stereotype_match", True, {
-                    "speaker_id": source_id,
+                    "speaker_id": speaker_id,
+                    "source_id": source_id,
                     "depth": _stereotype_context.depth,
                     "confidence": _stereotype_context.confidence,
                     "active_tags": _stereotype_context.active_tags[:5],
@@ -106,7 +101,7 @@ def run_stage(ctx, entity) -> None:
     if raw_input and str(raw_input).strip():
         try:
             from ...language_system.construction_parser import parse_input as _cx_parse
-            _cx_parse_result = _cx_parse(str(raw_input), entity)
+            _cx_parse_result = _cx_parse(str(raw_input), entity, speaker_id=speaker_id)
             semantic_packet["cx_comprehension"] = _cx_parse_result.get("comprehension", 0.0)
             semantic_packet["cx_social_intent"] = _cx_parse_result.get("social_intent", "unknown")
             semantic_packet["cx_construction_match"] = _cx_parse_result.get("construction_match", "")

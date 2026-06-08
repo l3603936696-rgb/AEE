@@ -46,9 +46,11 @@ class WorldModel:
             matched = wm.get("matched_rules", []) or []
 
             # ---- 认知盲区 → curiosity + ----
+            # 饱和负反馈：curiosity 越高，认知盲区的刺激越弱（已足够好奇，不再叠加）
             if hit_rate < self.COVERAGE_THRESHOLD:
                 gap = self.COVERAGE_THRESHOLD - hit_rate
-                entity_core.adjust("curiosity", gap * somatic_weight * 0.5)
+                _cur_curiosity = float(getattr(entity_core, "curiosity", 0.5))
+                entity_core.adjust("curiosity", gap * somatic_weight * 0.5 * (1.0 - _cur_curiosity))
 
             # ---- 高置信度 SEEK 规律 → approach_drive + ----
             high_conf_seek = [

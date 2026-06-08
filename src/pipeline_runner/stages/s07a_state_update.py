@@ -163,6 +163,18 @@ def run_stage(ctx, entity) -> None:  # noqa: C901
         except Exception:
             pass
 
+        # ---- curiosity 自然衰减：向 drive_vector_final["curiosity"] 缓慢漂移 ----
+        try:
+            _curiosity_target = float(
+                getattr(ctx, "drive_vector_final", {}).get("curiosity", entity.curiosity)
+            )
+            _curiosity_cur = float(getattr(entity, "curiosity", 0.5))
+            entity.curiosity = max(0.0, min(1.0,
+                _curiosity_cur * 0.95 + _curiosity_target * 0.05
+            ))
+        except Exception:
+            pass
+
         entity.fatigue = max(0.0, min(1.0, new_state.get("fatigue", entity.fatigue)))
         entity.stress = max(0.0, min(1.0, new_state.get("stress", entity.stress)))
         entity.relief_debt = max(0.0, min(1.0, new_state.get("relief_debt", entity.relief_debt)))

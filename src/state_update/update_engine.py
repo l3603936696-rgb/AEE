@@ -398,9 +398,11 @@ def update_state(
     new_unresolved = _clamp(current_unresolved + unresolved_delta)
 
     # ---- boredom：探索/直面降低，idle 轻微上升 ----
+    # browse/search ≈ explore，reach ≈ seek，write ≈ resolve（新 action_type 同义映射）
     try:
         boredom_natural = 0.002 * metabolic_seconds / 60.0
-        if action_type in ("explore", "resolve", "seek", "comfort"):
+        if action_type in ("explore", "resolve", "seek", "comfort",
+                           "browse", "search", "reach", "write"):
             boredom_delta = -0.06
         elif action_type == "idle" or _is_avoid_action(decision):
             boredom_delta = 0.03

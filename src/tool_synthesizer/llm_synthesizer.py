@@ -129,8 +129,8 @@ class LLMSynthesizer:
         """延迟加载 LLM provider"""
         if self._llm_provider is None:
             try:
-                from ..llm import create_llm_callable
-                self._llm_provider = create_llm_callable()
+                from ..observability import create_wrapped_llm
+                self._llm_provider = create_wrapped_llm("llm_synthesizer")
             except Exception as e:
                 logger.warning(f"[LLMSynthesizer] LLM provider unavailable: {e}")
                 return None

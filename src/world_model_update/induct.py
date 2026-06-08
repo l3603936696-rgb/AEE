@@ -16,16 +16,13 @@ Induction Module (归纳模块) — v11.2 预测误差驱动
     - 无匹配规则 → 创建新规则（confidence=0.3 起步）
     冷启动：无规则时预测=0，任何|actual|>threshold 触发规则创建
 
-v11.1 旧版（反事实对比法）已移除——方法论存在四个结构性缺陷：
-    1. 对照组混入了不同动作的效果
-    2. 动作选择偏差使 pre_state 差异被误读为因果
-    3. 10样本 × 0.03 阈值=噪声放大器
-    4. 上下文维度与状态字段循环
+子模块：
+    induct_helpers.py — 辅助函数（生成器、剪枝、格式转换）
+    induct_test.py    — 测试入口
 """
 
 import uuid
 import time
-import math
 from typing import Any, Dict, List, Optional, Set
 
 from .defaults import (
@@ -35,28 +32,15 @@ from .defaults import (
     CONTEXT_DIMENSIONS,
 )
 from .rules import Rule, Snap, Predicts
-
-
-# ============================================================================
-# 辅助函数
-# ============================================================================
-
-def _safe_float(val: Any, default: float = 0.0) -> float:
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return default
-
-
-def _extract_state(state: Any) -> Dict[str, float]:
-    """安全提取状态向量，仅保留白名单字段"""
-    if not isinstance(state, dict):
-        return {}
-    return {
-        k: _safe_float(v)
-        for k, v in state.items()
-        if k in STATE_FIELD_WHITELIST
-    }
+from .induct_helpers import (
+    _safe_float,
+    _salient_fields,
+    _generate_trigger,
+    _generate_expect_from_deltas,
+    _generate_content_from_deltas,
+    _infer_context_label,
+    _get_prediction_error_map,
+)
 
 
 def _safe_snaps(snaps: Any) -> List[Snap]:
@@ -72,88 +56,16 @@ def _safe_snaps(snaps: Any) -> List[Snap]:
     return result
 
 
-def _infer_context_label(pre_state: Dict[str, float]) -> str:
-    """从 pre_state 推断上下文标签，用于 trigger 生成"""
-    parts = []
-    for dim in CONTEXT_DIMENSIONS:
-        val = pre_state.get(dim, 0.5)
-        direction = "高" if val >= 0.5 else "低"
-        parts.append(f"{dim}{direction}")
-    return "_".join(parts)
+def _extract_state(state: Any) -> Dict[str, float]:
+    """安全提取状态向量，仅保留白名单字段"""
+    if not isinstance(state, dict):
+        return {}
+    return {
+        k: _safe_float(v)
+        for k, v in state.items()
+        if k in STATE_FIELD_WHITELIST
+    }
 
-
-def _generate_trigger(action_type: str, context_label: str) -> str:
-    """自动生成 trigger 字段"""
-    action = action_type.strip().lower()
-    ctx = context_label.strip().lower()
-    return f"action_{action}_in_{ctx}"
-
-
-def _salient_fields(
-    deltas: Dict[str, float],
-    fields: List[str],
-    ratio: float,
-) -> List[str]:
-    """显著性剪枝：只保留 |delta| >= ratio × max|delta| 的字段。
-
-    动机：expected_deltas 在 EMA 路径里只进不出，会累积成十几字段的合取，
-    这类「多字段同时按某方向变」的超定预测在现实 tick 里几乎不可能整体兑现，
-    必然被验证判错、衰减到置信度地板（僵尸规则）。按相对显著性剪掉跟随主字段
-    小幅晃动的长尾，让规则保持紧凑、可被验证兑现。
-
-    比例式自适应（不设固定字段数 k）：max|delta| 为 0 时全保留（纯 stable 规则，
-    本就易兑现，无需剪枝）。
-    """
-    mags = [(f, abs(deltas.get(f, 0.0))) for f in fields]
-    max_mag = max((m for _, m in mags), default=0.0)
-    floor = max_mag * ratio
-    # max_mag <= 0 时 floor=0，min 子句恒真 → 全字段保留（dict 派发/连续比较，
-    # 属剪枝基础设施，非行为门控）。
-    kept = [f for f, m in mags if m >= floor]
-    return kept if kept else list(fields)
-
-
-def _generate_expect_from_deltas(
-    deltas: Dict[str, float],
-    fields: List[str],
-) -> str:
-    """从预期变化生成 expect 字符串"""
-    parts = []
-    for f in fields:
-        d = deltas.get(f, 0.0)
-        if abs(d) < 0.005:
-            parts.append(f"{f}_stable")
-        elif d > 0:
-            parts.append(f"{f}_increase")
-        else:
-            parts.append(f"{f}_decrease")
-    return "+".join(parts) if parts else "stable"
-
-
-def _generate_content_from_deltas(
-    action_type: str,
-    context_label: str,
-    deltas: Dict[str, float],
-    fields: List[str],
-) -> str:
-    """从预期变化生成 content 描述文本"""
-    action = action_type.strip()
-    ctx = context_label.strip()
-    field_descs = []
-    for f in fields:
-        d = deltas.get(f, 0.0)
-        if d > 0:
-            field_descs.append(f"{f}↑{d:.3f}")
-        elif d < 0:
-            field_descs.append(f"{f}↓{abs(d):.3f}")
-        else:
-            field_descs.append(f"{f}→0")
-    return f"{ctx}时{action}→{','.join(field_descs)}"
-
-
-# ============================================================================
-# 预测函数（供管线调用）
-# ============================================================================
 
 def predict_action_effects(
     action_type: str,
@@ -202,7 +114,6 @@ def predict_action_effects(
     if total_weight <= 0:
         return {}
 
-    # 收集所有规则涉及的字段
     all_fields: Set[str] = set()
     for r in matching:
         all_fields.update(r.expected_deltas.keys())
@@ -218,9 +129,13 @@ def predict_action_effects(
     return prediction
 
 
-# ============================================================================
-# 主入口：induct_rules（v11.2 预测误差驱动）
-# ============================================================================
+def _find_in_new(new_rules: List[Rule], trigger: str) -> Optional[Rule]:
+    """在本轮新创建的规则中查找"""
+    for r in new_rules:
+        if r.predicts.trigger == trigger:
+            return r
+    return None
+
 
 def induct_rules(
     old_rules: List[Any],
@@ -244,7 +159,6 @@ def induct_rules(
         List[Rule] — 新创建的规律列表（旧规则在 old_rules 中被原地更新）
     """
     try:
-        # ---- 参数读取 ----
         error_threshold = get_raw_value(
             param_snapshot,
             "world_model.prediction_error_threshold",
@@ -266,12 +180,10 @@ def induct_rules(
             3,
         )))
 
-        # ---- 快照安全化 ----
         safe_snaps = _safe_snaps(snaps)
         if len(safe_snaps) < 1:
             return []
 
-        # ---- 建立老规则索引（trigger → Rule 对象）----
         old_by_trigger: Dict[str, Rule] = {}
         if old_rules:
             for r in old_rules:
@@ -282,7 +194,6 @@ def induct_rules(
                     old_by_trigger[rule.predicts.trigger] = rule
 
         new_rules: List[Rule] = []
-        # 跟踪本轮新创建的 trigger（防止同一 cycle 内重复创建）
         new_triggers: Set[str] = set()
 
         for snap in safe_snaps:
@@ -290,15 +201,10 @@ def induct_rules(
             if action not in ACTION_TYPE_WHITELIST:
                 continue
 
-            # ---- 读取逐字段预测误差 ----
             pred_error = _get_prediction_error_map(snap)
             if not pred_error:
-                # 旧格式 snap（无 prediction_error_map）→ 跳过
                 continue
 
-            # ---- 计算实际 delta ----
-            # 用 pre/post 的全部数值字段（不仅限白名单）
-            # 因为 prediction_error_map 可能包含白名单外的字段
             pre = snap.pre_state if isinstance(snap.pre_state, dict) else {}
             post = snap.post_state if isinstance(snap.post_state, dict) else {}
             all_fields = set(pre.keys()) | set(post.keys())
@@ -309,7 +215,6 @@ def induct_rules(
                 except (TypeError, ValueError):
                     pass
 
-            # ---- 找显著预测误差的字段 ----
             significant = [
                 f for f, err in pred_error.items()
                 if abs(err) > error_threshold
@@ -317,17 +222,14 @@ def induct_rules(
             if not significant:
                 continue
 
-            # ---- 上下文推断 + trigger 生成 ----
-            context_label = _infer_context_label(snap.pre_state)
+            context_label = _infer_context_label(snap.pre_state, CONTEXT_DIMENSIONS)
             trigger = _generate_trigger(action, context_label)
 
-            # ---- 匹配已有规则 ----
             existing = old_by_trigger.get(trigger) or (
                 trigger in new_triggers and _find_in_new(new_rules, trigger)
             )
 
             if existing:
-                # ====== 更新已有规则 ======
                 for f in significant:
                     old_val = existing.expected_deltas.get(f, 0.0)
                     existing.expected_deltas[f] = round(
@@ -335,8 +237,6 @@ def induct_rules(
                         5,
                     )
 
-                # 显著性剪枝：删掉跌出显著线的字段，让规则自己瘦身。
-                # 存量僵尸规则（累积成十几字段）触发再现时会被剪回主字段。
                 kept_fields = _salient_fields(
                     existing.expected_deltas,
                     list(existing.expected_deltas.keys()),
@@ -346,7 +246,6 @@ def induct_rules(
                     f: existing.expected_deltas[f] for f in kept_fields
                 }
 
-                # 更新 expect / content 字符串（基于剪枝后的字段）
                 all_fields = list(existing.expected_deltas.keys())
                 existing.predicts.expect = _generate_expect_from_deltas(
                     existing.expected_deltas, all_fields
@@ -355,13 +254,10 @@ def induct_rules(
                     action, context_label, existing.expected_deltas, all_fields
                 )
 
-                # confidence 调整：误差大→学到东西（微升），误差小→预测准（升更多）
                 avg_abs_error = sum(
                     abs(pred_error.get(f, 0.0)) for f in significant
                 ) / len(significant)
-                # normalized_error: 0=完美预测, 1=完全离谱（以0.1为"离谱"基线）
                 norm_err = min(avg_abs_error / 0.1, 1.0)
-                # 误差大：+0.02（学到新东西），误差小：+0.08（预测准）
                 boost = 0.02 + 0.06 * (1.0 - norm_err)
                 existing.confidence = round(
                     min(0.95, existing.confidence + boost), 4
@@ -370,11 +266,9 @@ def induct_rules(
                 existing.source_experience_count += 1
 
             else:
-                # ====== 创建新规则 ======
                 if len(new_rules) >= max_new:
                     break
 
-                # 显著性剪枝：新规则出生即保持紧凑，只留动得最大的主字段。
                 salient = _salient_fields(actual_deltas, significant, salience_ratio)
 
                 expect = _generate_expect_from_deltas(actual_deltas, salient)
@@ -386,7 +280,7 @@ def induct_rules(
                 rule = Rule(
                     id=f"wmu_{uuid.uuid4().hex[:8]}",
                     content=content,
-                    confidence=0.3,  # 新规则低信心起步
+                    confidence=0.3,
                     source_experience_count=1,
                     stability_score=0.3,
                     stability_band=0.1,
@@ -418,155 +312,7 @@ def induct_rules(
         return []
 
 
-def _get_prediction_error_map(snap: Snap) -> Optional[Dict[str, float]]:
-    """从 Snap 中安全提取 prediction_error_map"""
-    # Snap dataclass 字段
-    pe_map = getattr(snap, "prediction_error_map", None)
-    if pe_map and isinstance(pe_map, dict):
-        return {str(k): float(v) for k, v in pe_map.items()}
-
-    # dict 格式 snap
-    if isinstance(snap, dict):
-        pe_map = snap.get("prediction_error_map")
-        if pe_map and isinstance(pe_map, dict):
-            return {str(k): float(v) for k, v in pe_map.items()}
-
-    return None
-
-
-def _find_in_new(new_rules: List[Rule], trigger: str) -> Optional[Rule]:
-    """在本轮新创建的规则中查找"""
-    for r in new_rules:
-        if r.predicts.trigger == trigger:
-            return r
-    return None
-
-
-# ============================================================================
-# 测试入口
-# ============================================================================
-
-if __name__ == "__main__":
-    print("=" * 64)
-    print("归纳模块测试 — v11.2 预测误差驱动")
-    print("=" * 64)
-
-    from .defaults import DEFAULT_PARAMS
-
-    now = time.time()
-
-    def make_snap_with_pred_error(
-        idx: int,
-        action: str,
-        pre_energy: float,
-        pre_info_gap: float,
-        info_gap_delta: float,
-        pred_error_gap: float,
-    ) -> Snap:
-        snap = Snap(
-            snap_index=idx,
-            timestamp=now + idx,
-            action_type=action,
-            target="none",
-            priority=0.5,
-            pre_state={"energy": pre_energy, "info_gap": pre_info_gap, "loneliness": 0.3},
-            post_state={
-                "energy": pre_energy - 0.02,
-                "info_gap": pre_info_gap + info_gap_delta,
-                "loneliness": 0.31,
-            },
-        )
-        # 注入 prediction_error_map（模拟管线中写入的）
-        snap.prediction_error_map = {
-            "info_gap": pred_error_gap,
-            "energy": -0.01,
-            "loneliness": 0.005,
-        }
-        return snap
-
-    # ====== 测试 1：冷启动，无规则，预测=0 → error=actual → 创建规则 ======
-    print("\n【测试 1】冷启动：预测=0，|actual| > threshold → 创建规则")
-    snaps_cold = [
-        make_snap_with_pred_error(0, "seek", 0.8, 0.7, -0.08, -0.08),
-        make_snap_with_pred_error(1, "seek", 0.8, 0.6, -0.07, -0.07),
-    ]
-    new_rules = induct_rules([], snaps_cold, DEFAULT_PARAMS)
-    ok1 = len(new_rules) > 0
-    print(f"  {'✓' if ok1 else '✗'} 生成规则数: {len(new_rules)}（期望 ≥1）")
-    for r in new_rules:
-        print(f"    [{r.id}] trigger={r.predicts.trigger}")
-        print(f"      expect={r.predicts.expect}")
-        print(f"      deltas={r.expected_deltas}")
-        print(f"      confidence={r.confidence}")
-
-    # ====== 测试 2：已有规则，EMA 更新 ======
-    print("\n【测试 2】已有规则，EMA 更新 expected_deltas")
-    if new_rules:
-        old_rule = new_rules[0]
-        old_info_gap = old_rule.expected_deltas.get("info_gap", 0.0)
-        old_conf = old_rule.confidence
-
-        # 新一轮快照，info_gap 变化不同了
-        snaps_update = [
-            make_snap_with_pred_error(2, "seek", 0.8, 0.7, -0.05, -0.03),
-        ]
-        induct_rules([old_rule], snaps_update, DEFAULT_PARAMS)
-        new_info_gap = old_rule.expected_deltas.get("info_gap", 0.0)
-        new_conf = old_rule.confidence
-
-        # EMA: 0.7 * 旧值 + 0.3 * 新值
-        expected_ema = round(old_info_gap * 0.7 + (-0.05) * 0.3, 5)
-        ok2a = abs(new_info_gap - expected_ema) < 0.001
-        ok2b = new_conf > old_conf  # confidence 应上升
-        print(f"  {'✓' if ok2a else '✗'} EMA 更新: {old_info_gap} → {new_info_gap}（期望 ≈{expected_ema}）")
-        print(f"  {'✓' if ok2b else '✗'} confidence: {old_conf} → {new_conf}（期望上升）")
-
-    # ====== 测试 3：误差小于阈值 → 不触发 ======
-    print("\n【测试 3】|error| < threshold → 不创建规则")
-    snaps_tiny = [
-        make_snap_with_pred_error(3, "seek", 0.8, 0.7, -0.01, -0.005),
-    ]
-    result_tiny = induct_rules([], snaps_tiny, DEFAULT_PARAMS)
-    ok3 = len(result_tiny) == 0
-    print(f"  {'✓' if ok3 else '✗'} 生成规则数: {len(result_tiny)}（期望 0）")
-
-    # ====== 测试 4：空快照 ======
-    print("\n【测试 4】空快照列表")
-    result_empty = induct_rules([], [], DEFAULT_PARAMS)
-    ok4 = len(result_empty) == 0
-    print(f"  {'✓' if ok4 else '✗'} 生成规则数: {len(result_empty)}（期望 0）")
-
-    # ====== 测试 5：predict_action_effects ======
-    print("\n【测试 5】predict_action_effects")
-    test_rules = [
-        Rule(
-            id="test_seek",
-            content="高能量时seek降低info_gap",
-            confidence=0.7,
-            status="active",
-            context="energy高_info_gap高",
-            predicts=Predicts(
-                trigger="action_seek_in_energy高_info_gap高",
-                expect="info_gap_decrease",
-            ),
-            expected_deltas={"info_gap": -0.06, "energy": -0.02},
-        ),
-    ]
-    pred = predict_action_effects(
-        "seek",
-        {"energy": 0.8, "info_gap": 0.7},
-        test_rules,
-    )
-    ok5a = abs(pred.get("info_gap", 0) + 0.06) < 0.001
-    ok5b = abs(pred.get("energy", 0) + 0.02) < 0.001
-    print(f"  {'✓' if ok5a else '✗'} info_gap 预测: {pred.get('info_gap')}（期望 -0.06）")
-    print(f"  {'✓' if ok5b else '✗'} energy 预测: {pred.get('energy')}（期望 -0.02）")
-
-    # 无匹配规则 → 空预测
-    pred_none = predict_action_effects("avoid", {"energy": 0.5}, test_rules)
-    ok5c = len(pred_none) == 0
-    print(f"  {'✓' if ok5c else '✗'} 无匹配规则 → 空预测: {pred_none}")
-
-    print("\n" + "=" * 64)
-    print("induct.py v11.2 测试完成")
-    print("=" * 64)
+__all__ = [
+    "induct_rules",
+    "predict_action_effects",
+]

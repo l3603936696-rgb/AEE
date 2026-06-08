@@ -152,7 +152,9 @@ def _active_dimensions(dv: dict, state: Optional[dict]) -> set:
     if state:
         for dim, val in state.items():
             try:
-                v = float(val)
+                # clamp 到 [0,1]：防未归一化维度（time_since_last_*，原始计数可达上万）
+                # 碾压焦点选择——下方 (v-0.5) 假设 v∈[0,1]
+                v = max(0.0, min(1.0, float(val)))
                 if v > 0.6:
                     active[dim] = active.get(dim, 0.0) + (v - 0.5) * 0.5
             except (TypeError, ValueError):
