@@ -1,7 +1,7 @@
 # Language System — 语言表达闭环
 
 > **维护人**：每次修改语言系统逻辑后更新此文档
-> **最后更新**：2026-05-26
+> **最后更新**：2026-06-09
 
 ## 职责
 
@@ -64,20 +64,30 @@ unresolved 真实下降？→ 词汇解锁（≥3次命中） / 模板学习（�
 | 文件 | 职责 |
 |------|------|
 | `quenching.py` | 消力效率追踪，SNR 计算，脐带脱落判定 |
+| `quenching_schema.py` | QuenchingRecord dataclass |
+| `quenching_helpers.py` | Hash + 序列化辅助函数 |
 | `word_warmup.py` | 词汇冷→热解锁，渐进学习路径 |
+| `word_warmup_helpers.py` | Hash 解码 + 休息巩固 |
 | `sentence_composer.py` | 锚点词 + 模板 → 完整句子，softmax 采样 |
 | `candidate_generator.py` | 三通道候选生成（驱动/策略地图/LLM），主权过滤 |
-| `somatic_concept_map.py` | 体感词 ↔ 驱动力场双向映射 |
+| `somatic_anchors.py` | 体感锚点 re-export |
+| `somatic_anchors_data.py` | 体感锚点数据表（80 词 + 聚类 + 维度） |
+| `somatic_concept_map.py` | 体感词 ↔ 驱动力场双向映射（核心 API） |
+| `somatic_concept_map_helpers.py` | BGE 传播层 + 聚类辅助函数 |
 | `strategy_map.py` | 策略地图（状态对 → 词效率，即时缓存） |
 | `thermal.py` | 自适应温控（exploration_window） |
 | `mirror.py` | 镜像学习（误解权） |
 | `five_rights.py` | 六大主权控制器 |
+| `five_rights_helpers.py` | 序列化 + check_defy 实现 |
 | `semantic_analyzer.py` | LLM 语义锚点匹配（v1） |
 | `abundance_monitor.py` | 语言丰度监测 |
 | `meta_cognitive.py` | 元认知分析 |
 | `construction_grammar.py` | 构式语法学习 |
 | `state_pattern_memory.py` | 内部符号涌现 |
+| `state_pattern_memory_schema.py` | 常量 + InternalPattern dataclass + bootstrap 数据 |
+| `state_pattern_memory_helpers.py` | 数学工具（cosine sim, EMA, forge, bootstrap） |
 | `stereotype_tree.py` | 定型观念树 |
+| `stereotype_tree_nodes.py` | StereotypeNode + StereotypeContext dataclasses |
 | `stereotype_learner.py` | 定型观念学习器 |
 | `connector_map.py` | 强度前缀/语气词/后缀评分 |
 | `source_profiler.py` | 他者建模（familiarity） |

@@ -4,8 +4,10 @@ Sentence Composer — 句子组合模块（v1.0）
 将锚点词组合成完整中文短句的模板库 + softmax 采样系统。
 
 子模块：
-    sentence_composer_schema.py — 超参 + 数学辅助函数
-    sentence_composer.py — 模板库 + 核心组合函数
+    sentence_composer_schema.py   — 超参 + 数学辅助函数
+    sentence_composer_patterns.py — PATTERNS + COMPOUND_PATTERNS 数据
+    sentence_composer_helpers.py — 独立数学 helpers
+    sentence_composer.py         — 核心组合逻辑
 """
 
 import logging
@@ -27,13 +29,11 @@ from .sentence_composer_schema import (
 
 logger = logging.getLogger(__name__)
 
-from .sentence_composer_patterns import PATTERNS
-from .sentence_composer_patterns import COMPOUND_PATTERNS
-from .sentence_composer_patterns import COMPOUND_PATTERNS
-
-
-
+from .sentence_composer_patterns import PATTERNS, COMPOUND_PATTERNS
 from .sentence_composer_helpers import _template_theoretical_max, _softmax_sample, _precompute_template_scales
+
+# 预计算每个模板的归一化封顶值
+_precompute_template_scales(PATTERNS)
 
 
 def compose_sentence(

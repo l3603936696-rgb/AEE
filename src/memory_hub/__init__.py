@@ -32,8 +32,11 @@ from .episodes_db import (
     get_episodes_for_induction,
     get_episode_count,
     prune_low_importance,
-    retrieve_episodes_by_text,
     Episode,
+    write_insight,
+    get_recent_insights,
+    retrieve_insights_by_labels,
+    Insight,
 )
 
 __all__ = [
@@ -58,6 +61,9 @@ __all__ = [
     "get_episodes_for_induction",
     "get_episode_count",
     "prune_low_importance",
-    "retrieve_episodes_by_text",
     "Episode",
+    "write_insight",
+    "get_recent_insights",
+    "retrieve_insights_by_labels",
+    "Insight",
 ]

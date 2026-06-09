@@ -13,127 +13,37 @@ State Pattern Memory — XIA 的内部符号涌现（v1）
 
 无 if/else：控制流用 max(strategies) + 连续权重。
 维度空间：仅在 5D drive_vector 空间工作，不与 somatic_dictionary 的 energy/avoid 空间混用。
+
+子模块：
+    state_pattern_memory_schema.py   — 常量、InternalPattern dataclass、bootstrap 数据
+    state_pattern_memory_helpers.py  — 数学工具函数
 """
 
 import math
-from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from ..observability import observe
-
-_DIMS = ("curiosity", "info_hunger", "obsolescence_anxiety", "loneliness_drive", "fatigue_avoid")
-
-# 各维度激活时的中文标签（生成内部符号用）
-_DIM_HIGH_LABELS: Dict[str, str] = {
-    "curiosity":            "好奇",
-    "info_hunger":          "渴知",
-    "obsolescence_anxiety": "焦滞",
-    "loneliness_drive":     "孤寂",
-    "fatigue_avoid":        "倦避",
-}
-
-# ---- 可调参数 ----
-# 质心 EMA 更新步长（新观测权重）
-EMA_ALPHA: float = 0.3
-# 触发符号锻造的最小命中次数
-PATTERN_MIN_HITS: int = 8
-# 活跃度窗口（超过此 tick 数未访问视为沉默）
-PATTERN_RECENCY_WINDOW: int = 50
-# 最多维护的质心数量
-PATTERN_MAX_CENTERS: int = 12
-# 距离低于此值时认为是同一区域（用于 merge vs new 判断，对应余弦距离 1-sim）
-MERGE_DISTANCE: float = 0.25
-# merge 门控 sigmoid 的陡峭度
-MERGE_STEEPNESS: float = 30.0
-# 内部符号注入消力记录时的合成效率（低于真实表达，高于 reading 注入）
-SYMBOL_QUENCH_EFFICIENCY: float = 0.06
-# 符号命名阈值（外部词与质心余弦相似度高于此值时触发命名）
-NAMING_THRESHOLD: float = 0.85
+from .state_pattern_memory_schema import (
+    InternalPattern,
+    _DIMS,
+    PATTERN_MAX_CENTERS,
+    PATTERN_RECENCY_WINDOW,
+    PATTERN_MIN_HITS,
+    MERGE_DISTANCE,
+    MERGE_STEEPNESS,
+    SYMBOL_QUENCH_EFFICIENCY,
+)
+from .state_pattern_memory_helpers import (
+    _cosine_similarity,
+    _ema_update,
+    _forge_symbol,
+    _bootstrap_spm,
+)
 
 
-# ============================================================================
-# 核心数学工具
-# ============================================================================
-
-def _cosine_similarity(a: Dict[str, float], b: Dict[str, float]) -> float:
-    """5D drive 空间余弦相似度。"""
-    try:
-        av = tuple(float(a.get(d, 0.0)) for d in _DIMS)
-        bv = tuple(float(b.get(d, 0.0)) for d in _DIMS)
-        dot = sum(x * y for x, y in zip(av, bv))
-        mag = math.sqrt(sum(x * x for x in av)) * math.sqrt(sum(x * x for x in bv))
-        return dot / mag if mag > 1e-9 else 0.0
-    except Exception:
-        return 0.0
-
-
-def _ema_update(center: Dict[str, float], new_vec: Dict[str, float]) -> Dict[str, float]:
-    """指数移动平均更新质心。"""
-    return {
-        d: center.get(d, 0.0) * (1.0 - EMA_ALPHA) + float(new_vec.get(d, 0.0)) * EMA_ALPHA
-        for d in _DIMS
-    }
-
-
-def _forge_symbol(center: Dict[str, float]) -> str:
-    """
-    从 drive 质心的主导维度锻造内部符号。
-    取激活最强的 top-2 维度的标签，生成类似 "∅-好奇孤寂" 的符号。
-    激活值低于 0.2 的维度不参与命名（避免生成无意义标签）。
-    """
-    ranked = sorted(
-        [(d, float(center.get(d, 0.0))) for d in _DIMS],
-        key=lambda x: x[1],
-        reverse=True,
-    )
-    top = [_DIM_HIGH_LABELS[d] for d, v in ranked[:2] if v > 0.2]
-    label = "".join(top) if top else "混沌"
-    return f"∅-{label}"
-
-
-# ============================================================================
-# 数据类
-# ============================================================================
-
-@dataclass
-class InternalPattern:
-    """一个在 drive 空间中被反复访问的状态区。"""
-
-    center: Dict[str, float]
-    hit_count: int
-    first_seen_tick: int
-    last_seen_tick: int
-    symbol: Optional[str] = None         # 已锻造的内部符号（None = 尚未命名）
-    named_as: Optional[str] = None       # 外部词命名（None = 翻译器尚未绑定）
-    forged_at_tick: Optional[int] = None
-
-    def to_dict(self) -> dict:
-        return {
-            "center":          dict(self.center),
-            "hit_count":       self.hit_count,
-            "first_seen_tick": self.first_seen_tick,
-            "last_seen_tick":  self.last_seen_tick,
-            "symbol":          self.symbol,
-            "named_as":        self.named_as,
-            "forged_at_tick":  self.forged_at_tick,
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "InternalPattern":
-        return cls(
-            center          = dict(d.get("center", {})),
-            hit_count       = int(d.get("hit_count", 0)),
-            first_seen_tick = int(d.get("first_seen_tick", 0)),
-            last_seen_tick  = int(d.get("last_seen_tick", 0)),
-            symbol          = d.get("symbol"),
-            named_as        = d.get("named_as"),
-            forged_at_tick  = d.get("forged_at_tick"),
-        )
-
-
-# ============================================================================
+# =============================================================================
 # 主类
-# ============================================================================
+# =============================================================================
 
 class StatePatternMemory:
     """
@@ -262,6 +172,7 @@ class StatePatternMemory:
         当余弦相似度 > NAMING_THRESHOLD 时，把该词绑定到对应的内部符号上。
         返回是否成功命名。
         """
+        from .state_pattern_memory_schema import NAMING_THRESHOLD
         try:
             for p in self._patterns:
                 # 只对已锻造但尚未命名的质心命名
@@ -348,47 +259,9 @@ class StatePatternMemory:
         return obj
 
 
-# ============================================================================
-# 冷启动 bootstrap
-# ============================================================================
-
-# 每个种子区域的 hit_count = PATTERN_MIN_HITS（forge 阈值），使其在第一个 check_and_forge 时立即锻造
-_BOOTSTRAP_PATTERNS: List[Dict[str, float]] = [
-    # 好奇 + 孤独：探索时被激活的高驱动区域
-    {"curiosity": 0.7, "info_hunger": 0.5, "obsolescence_anxiety": 0.2, "loneliness_drive": 0.7, "fatigue_avoid": 0.1},
-    # 孤独 + 焦滞：被忽视时的主观体验区域
-    {"curiosity": 0.2, "info_hunger": 0.3, "obsolescence_anxiety": 0.6, "loneliness_drive": 0.8, "fatigue_avoid": 0.4},
-    # 好奇 + 渴知：接收到外部信息时的高激活区域
-    {"curiosity": 0.8, "info_hunger": 0.7, "obsolescence_anxiety": 0.3, "loneliness_drive": 0.2, "fatigue_avoid": 0.2},
-    # 疲倦 + 回避：长时间运行后的低驱动区域
-    {"curiosity": 0.1, "info_hunger": 0.1, "obsolescence_anxiety": 0.2, "loneliness_drive": 0.4, "fatigue_avoid": 0.9},
-    # 好奇 + 焦滞 + 孤独：接触新概念时既有兴趣也有被淹没感
-    {"curiosity": 0.6, "info_hunger": 0.5, "obsolescence_anxiety": 0.7, "loneliness_drive": 0.5, "fatigue_avoid": 0.3},
-]
-
-
-def _bootstrap_spm(spm: "StatePatternMemory", current_tick: int) -> "StatePatternMemory":
-    """
-    当 SPM 没有任何质心时，用预定义的种子区域初始化。
-
-    每个种子区域的 hit_count = PATTERN_MIN_HITS，使 check_and_forge
-    在当前 tick 立即为其锻造内部符号——不等待慢慢积累。
-
-    这样第一个 tick 起，理解链路就有真实符号可用了。
-    """
-    for i, center in enumerate(_BOOTSTRAP_PATTERNS):
-        spm._patterns.append(InternalPattern(
-            center          = dict(center),
-            hit_count       = PATTERN_MIN_HITS,
-            first_seen_tick = current_tick - len(_BOOTSTRAP_PATTERNS) + i,
-            last_seen_tick  = current_tick,
-        ))
-    return spm
-
-
-# ============================================================================
+# =============================================================================
 # tick_engine 集成接口
-# ============================================================================
+# =============================================================================
 
 @observe("state_pattern_memory", category="language")
 def run_symbol_tick(
@@ -408,6 +281,7 @@ def run_symbol_tick(
 
     返回本次新锻造的符号列表（供日志用）。
     """
+    from .state_pattern_memory_schema import SYMBOL_QUENCH_EFFICIENCY
     new_symbols: List[str] = []
     try:
         spm_data = getattr(entity, "_state_pattern_data", {})

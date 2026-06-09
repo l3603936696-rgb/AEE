@@ -40,6 +40,7 @@ from ...core.action_dispatcher import (
 )
 from ...decision_system.submodules.web_search import drain_pending_searches
 from ...parameter_system.access import get_param
+from .s05b_pattern_feedback import run_bp_feedback as _run_bp_feedback
 
 logger = logging.getLogger(__name__)
 
@@ -274,98 +275,20 @@ def run_stage(ctx, entity) -> None:
         entity._last_action_result = {"success": None, "detail": "", "count": 0}
 
     # ---- Step 8.5: 行为进化反馈闭环 ----
-    try:
-        import time as _time
-        _time.sleep(1.5)
-        pending_results = drain_pending_searches()
-        all_action_results = list(all_results)
-        for pr in pending_results:
-            results_list = pr.get("results", [])
-            for r in results_list:
-                all_action_results.append(f"[search] {str(r)[:80]}")
-    except Exception:
-        all_action_results = list(all_results)
-
+    all_action_results = list(all_results)
+    bias_info = None
+    score_breakdown = None
     if selected_candidate is not None and all_action_results:
-        success = any(r.startswith("[OK]") or "[search]" in r for r in all_action_results)
-        failure = any("失败" in r or "Error" in r or "error" in r for r in all_action_results)
-        _fail_signal = float(failure)
-        _success_signal = float(success) * (1.0 - _fail_signal)
-        short_reward = _success_signal * 1.5 - 0.5
-        result_count = len(all_action_results)
-        satisfaction = (
-            0.5
-            + min(result_count / 5.0, 0.3)
-            - _fail_signal * 0.3
+        bias_info, score_breakdown = _run_bp_feedback(
+            selected_candidate,
+            all_action_results,
+            emergent_action,
+            decision,
+            raw_input,
+            pre_bp_state,
+            entity,
+            _trace,
         )
-        satisfaction = max(0.0, min(1.0, satisfaction))
-        result_for_feedback = {
-            "success": _success_signal > 0.5,
-            "detail": " | ".join(all_action_results[:3]),
-            "prediction_error": 0.2 + _fail_signal * 0.3,
-            "error_type": {True: "execution", False: "none"}[failure],
-            "short_term_reward": short_reward,
-            "satisfaction": satisfaction,
-            "content": " | ".join(all_action_results[:3]),
-            "reason": f"{emergent_action} action",
-            "count": result_count,
-        }
-        entity._bp_identity = 0.5
-        entity._bp_unresolved_src = "external"
-        state_for_bp = entity.to_state_snapshot()
-        try:
-            from ...core import behavior_patterns as bp
-            candidate_name = (
-                selected_candidate.actions
-                if hasattr(selected_candidate, "actions")
-                else str(selected_candidate)
-            )
-            base_score = bp.compute_drive_match(selected_candidate, state_for_bp)
-            wm_pred = bp.world_model_predict(selected_candidate, state_for_bp)
-            bias_bonus = 0.0
-            drive = "?"
-            intent = "unknown"
-            if hasattr(selected_candidate, "intent_tag"):
-                intent = selected_candidate.intent_tag
-                drive = bp.INTENT_TO_DRIVE.get(intent, "explore")
-                bias_bonus = 0.15 * entity.long_term_bias.get(drive, 0.0)
-            score_breakdown = {
-                "candidate": candidate_name, "intent": intent, "drive": drive,
-                "base": round(base_score, 3),
-                "wm_reward": round(wm_pred["reward"], 3),
-                "wm_uncertainty": round(wm_pred["uncertainty"], 3),
-                "bias_bonus": round(bias_bonus, 4),
-                "bias": dict(entity.long_term_bias),
-            }
-            entity._bp_identity = entity.update_behavior_signature(
-                decision.get("action_type", "") or emergent_action
-            )
-            raw_input_str = str(raw_input or "").strip()
-            entity._bp_unresolved_src = "external" if raw_input_str else "self_generated"
-            enriched_result = dict(result_for_feedback)
-            enriched_result["identity_signal"] = entity._bp_identity
-            enriched_result["unresolved_source"] = entity._bp_unresolved_src
-            bp.apply_result(selected_candidate, enriched_result, state_for_bp)
-            bias_info = bp.update_long_term_bias(
-                entity_state=entity,
-                pattern_or_intent=selected_candidate,
-                pre_state=pre_bp_state,
-                post_state=state_for_bp,
-                action_result=enriched_result,
-            )
-            if entity.tick % 20 == 0:
-                removed = bp.get_pool().prune()
-                if removed:
-                    _trace("pattern_prune", True, {"removed": removed})
-            _trace("pattern_feedback", True, {
-                "candidate": candidate_name, "intent": intent,
-                "success": success, "satisfaction": satisfaction,
-                "short_reward": short_reward,
-                "score_breakdown": score_breakdown,
-                "bias_update": bias_info,
-            })
-        except Exception as e:
-            _trace("pattern_feedback", False, {}, str(e))
 
     # Step 8.1 结果即为最终决策
     decision = {

@@ -4,6 +4,7 @@
 """
 
 from .entity_state import EntityState
+from .language_anchor_match import match_anchor_expression
 
 from .language_system.somatic_concept_map import SOMATIC_ANCHORS
 

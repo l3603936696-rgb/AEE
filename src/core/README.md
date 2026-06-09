@@ -81,7 +81,9 @@ fragmentation 高时行为不稳定，tone 描述从正常→破碎的过渡：
 | `behavior_vector.py` | 内生 rule effect 偏置 |
 | `entity_core.py` | 轻量状态容器（V6 系统用） |
 | `somatic_signals.py` | 感质信号与 DoS 保护 |
-| `state_to_context.py` | 状态 → 处境描述生成器 |
+| `state_to_context.py` | 入口重导出（向后兼容）|
+| `state_to_context_data.py` | 静态数据（bands、冲突规则、常量）|
+| `state_to_context_helpers.py` | 函数实现（generate/build/derive）|
 | `action_dispatcher.py` | 行为分发器 |
 | `behavior_patterns.py` | 行为模式数据库 |
 | `emergent_behavior_v5.py` | V5 fallback（历史逻辑） |

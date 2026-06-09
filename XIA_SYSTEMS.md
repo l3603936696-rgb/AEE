@@ -146,9 +146,15 @@ All stages share a mutable context container (SimpleNamespace). Stage functions 
 | `stages/s03_think.py` | Emotion particles + thinking |
 | `stages/s04a_meta.py` | Meta-cognitive adjustment |
 | `stages/s04b_emerge.py` | Behavior emergence |
+| `stages/s04b_self_mapping.py` | Self-mapping + narrative generation (extracted from s04b) |
 | `stages/s05_behavior.py` | Connection depth + decision assembly |
-| `stages/s06_language/` | Language generation (LLM or anchor) |
+| `stages/s05b_pattern_feedback.py` | BP feedback loop (extracted from s05) |
+| `stages/s06_language/` | LLM output stage |
+| `stages/s06a_candidates.py` | Language candidate generation |
+| `stages/s06a_candidates.py` | Language candidate generation |
+| `stages/s06a_training_mode.py` | Training mode somatic help (extracted from s06a) |
 | `stages/s07a_state_update.py` | State write-back |
+| `stages/s07a_integrity_tick.py` | Integrity monitor tick (extracted from s07a) |
 | `stages/s07b_persist.py` | Snapshots + memory |
 | `stages/s07c_language_finalize.py` | Quenching loop + persistence |
 | `context.py` | Shared pipeline context object |
@@ -264,7 +270,7 @@ joy, sadness, anger, fear, anxiety, surprise, disgust, serenity, excitement, cur
 
 **Responsibility**: Computes raw drives from entity state (curiosity, loneliness, fatigue avoidance, etc.).
 
-**Entry files**: `src/drive_system/drive_system.py`
+**Entry files**: `src/drive_system/drive_system.py` (main entry), `src/drive_system/drive_system_helpers.py` (curves, data structures)
 
 **Inputs**: Entity state
 
@@ -372,7 +378,7 @@ joy=3600s, fear=1800s, anger=2400s, sadness=5400s, surprise=600s
 
 **Responsibility**: Emergent questions and suggestions, data-driven, no hardcoded templates.
 
-**Entry files**: `src/thinking_system/thinking_system.py`
+**Entry files**: `src/thinking_system/thinking_system.py` (main entry), `src/thinking_system/thinking_system_helpers.py` (dimensions, focal rules, suggestions), `src/thinking_system/thinking_system_questions.py` (question generation, rendering)
 
 **Inputs**: wm_context, drive_vector, state_snapshot, somatic_signals, entity_state
 
@@ -436,10 +442,17 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 | File | Function |
 | --- | --- |
 | `quenching.py` | Quenching efficiency tracking |
+| `quenching_schema.py` | QuenchingRecord dataclass |
+| `quenching_helpers.py` | Hash + serialization helpers |
 | `word_warmup.py` | Vocabulary cold->warm unlocking (>=3 quenchings unlock, v11.3 separates activation from forgetting) |
+| `word_warmup_helpers.py` | Hash decoding + rest consolidation |
 | `sentence_composer.py` | Anchor words -> sentences, softmax sampling (thin entry) |
 | `sentence_composer_schema.py` | Hyperparameters + math helpers |
-| `somatic_concept_map.py` | Somatic word <-> drive field mapping |
+| `sentence_composer_helpers.py` | Template fill helpers |
+| `somatic_anchors.py` | Thin re-export (somatic_anchors_data.py) |
+| `somatic_anchors_data.py` | SOMATIC_ANCHORS / ANCHOR_CLUSTERS / ALL_DIMENSIONS data tables |
+| `somatic_concept_map.py` | Somatic word <-> drive field mapping (core API) |
+| `somatic_concept_map_helpers.py` | BGE propagation + clustering helpers |
 | `strategy_map.py` | Strategy map immediate cache layer |
 | `connector_map.py` | Intensity prefix / mood opening / suffix scoring |
 | `template_learner.py` | Template learning |
@@ -452,6 +465,8 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 | `reply_motivator.py` | Reply motivation: relationship weight * intent weight * state modulation |
 | `reflection_layer.py` | **Rumination layer**: LLM acts as a mirror for deep episode review |
 | `state_pattern_memory.py` | **Internal symbol emergence**: hit >=3 forges internal symbols (e.g. "null-curious-lonely") |
+| `state_pattern_memory_schema.py` | Constants, InternalPattern dataclass, bootstrap data |
+| `state_pattern_memory_helpers.py` | Math tools (cosine sim, EMA update, forge, bootstrap) |
 | `somatic_self_awareness.py` | **Somatic meta-awareness**: somatic decoding -> self-reference -> awareness intensity modulation |
 | `narrative_fragments.py` | **Narrative fragments**: action self-reference / causal narrative / state trajectory, softmax sampling |
 | `narrative_context.py` | Context and lookup-table construction for narrative fragment scoring |
@@ -468,6 +483,7 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 | `preoccupation_engine.py` | **Preoccupation system**: worry/miss/anticipate/anxious/nostalgic/curious - thoughts with object and time span |
 | `social_comprehension.py` | Understand sibling channel input, generate resonance and credit quenching |
 | `stereotype_tree.py` | **Stereotype tree**: hierarchical speaker cognitive structure (category->region->situation->individual) |
+| `stereotype_tree_nodes.py` | StereotypeNode / StereotypeContext dataclasses |
 | `stereotype_learner.py` | **Stereotype learner**: extract speaker characteristic labels (thin entry) |
 | `stereotype_markers.py` | Linguistic marker constants |
 | `stereotype_memory.py` | MEMORY.md tag extraction and tree initialization |
@@ -475,6 +491,7 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 | `teacher_lexicon.py` | Teacher lexicon: concept -> somatic entry -> her words -> reflective sentences |
 | `mirror.py` | Mirror learning, build own version of understanding |
 | `five_rights.py` | **Six sovereignty controllers**: self-closure right / boredom right / misunderstanding right / forgetting right / contradiction right / physical gravity |
+| `five_rights_helpers.py` | Serialization helpers + check_defy impl |
 | `semantic_analyzer.py` | LLM semantic anchor matching (v1, replaced by BGE) |
 | `thermal.py` | Adaptive temperature control |
 | `meta_cognitive.py` | Meta-cognitive snapshot analysis |
@@ -701,10 +718,14 @@ energy = total compute
 | File | Function |
 | --- | --- |
 | `update_engine.py` | State update main engine (unified compute ledger v2.0) |
+| `update_engine_helpers.py` | Helpers + state-field step functions |
+| `update_engine_test.py` | Inline tests (extracted) |
 | `info_queue.py` | Information queue (intake -> digest -> gap) |
 | `compute_load.py` | Compute load calculation |
 | `compute_coherence.py` | Coherence computation |
 | `compute_connection.py` | Connection depth / loneliness goals |
+| `compute_connection_helpers.py` | Helpers + extended versions |
+| `compute_connection_test.py` | Inline tests (extracted) |
 | `dopamine_tone.py` | Dopamine tone |
 | `oxytocin_signal.py` | Oxytocin tone (three-gate trigger + natural decay) |
 | `quenching/` | Six-channel quenching sub-package |
@@ -732,6 +753,8 @@ energy = total compute
 | File | Function |
 | --- | --- |
 | `episodes_db.py` | SQLite event log (always writes first) |
+| `episodes_db_schema.py` | DB init, table definitions |
+| `episodes_db_helpers.py` | Dataclasses, importance, builders |
 | `insula_hub.py` | Visceral sensation center (topological indicators -> somatic markers) |
 | `tetramem_adapter.py` | TetraMem HTTP adapter (external memory service) |
 | `tetramem_persistence.py` | Fallback persistence layer (local JSON read/write) |
@@ -795,6 +818,9 @@ CREATE TABLE episodes (
 | `integrity_monitor.py` | Integrity monitoring | (scans expression/perception/cognition/continuity four regions) |
 | `integrity_signal.py` | Integrity change signal generation (active_harm / drive_delta / behavior_bias) |
 | `self_binding.py` | Self-binding strength calculation (frequency + perturbation_depth) |
+| `behavior_patterns_schema.py` | Dataclass + schema constants + update_long_term_bias (extracted from behavior_patterns.py) |
+| `behavior_patterns_pool.py` | PatternPool + _WorldModelDB (extracted from behavior_patterns.py) |
+| `behavior_patterns.py` | Entry module: re-exports + scoring functions (192L) |
 
 ---
 
@@ -1104,4 +1130,4 @@ When modifying these areas, **you must update** this index and the corresponding
 
 ---
 
-*Last updated: 2026-06-07*
+*Last updated: 2026-06-09*

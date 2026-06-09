@@ -2,8 +2,10 @@
 Sentence Composer Schema — constants and helper functions for sentence_composer.
 
 Submodules of src.language_system.sentence_composer:
-    sentence_composer_schema.py — hyperparameters + math helpers
-    sentence_composer.py — PATTERNS data + compose_sentence + fill functions
+    sentence_composer_schema.py   — hyperparameters + math helpers
+    sentence_composer_patterns.py — PATTERNS + COMPOUND_PATTERNS data
+    sentence_composer_helpers.py — standalone math helpers
+    sentence_composer.py         — core composition logic
 """
 
 import math

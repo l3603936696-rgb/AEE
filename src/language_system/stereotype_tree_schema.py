@@ -1,15 +1,23 @@
 """
-Stereotype Tree Schema — constants + cognitive tag inference for stereotype tree.
+Stereotype Tree Schema -- constants + cognitive tag inference for stereotype tree.
 
 Submodules of src.language_system.stereotype_tree:
-    stereotype_tree_schema.py — constants + tag inference
-    stereotype_tree.py        — StereotypeTree + all classes
+    stereotype_tree_schema.py   -- constants + math helpers
+    stereotype_tree_helpers.py -- internal helpers for StereotypeTree
+    stereotype_forks.py        -- StereotypeForks class
+    stereotype_tree_stage3.py  -- StereotypeTreeStage3 class
+    stereotype_tree.py         -- StereotypeTree + public API
 """
 
 from typing import List, Tuple, Dict
 
 DEPTH_NAMES = ("category", "region", "situation", "individual")
 TREE_DEPTH = 4
+
+# -- Fork detection constants ----------------------------------------------------
+_SIMILARITY_THRESHOLD = 0.72
+_FORK_DIFF_THRESHOLD = 0.40
+_FORK_WINDOW = 5
 
 FEATURE_DIMS = frozenset({
     "avg_sentence_len", "question_ratio", "philosophical_ratio",
@@ -34,7 +42,7 @@ DEFAULT_FEATURE_WEIGHTS = {
 
 
 def infer_cognitive_tags(features: Dict[str, float]) -> List[str]:
-    """从特征值推断认知风格标签。"""
+    """Infer cognitive style tags from feature values."""
     tags = []
     if not features:
         return tags
@@ -84,7 +92,7 @@ def infer_cognitive_tags(features: Dict[str, float]) -> List[str]:
 
 
 def find_opposite_pairs(tags_a: List[str], tags_b: List[str]) -> List[tuple]:
-    """找出两个标签集合之间的对立对。"""
+    """Find opposing tag pairs between two tag sets."""
     opposites = []
     for op_a, op_b in COGNITIVE_STYLE_OPPOSITES:
         if op_a in tags_a and op_b in tags_b:

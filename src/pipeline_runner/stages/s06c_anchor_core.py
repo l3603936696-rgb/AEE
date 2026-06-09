@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from ...language_system import QuenchingTracker
 from ...language_system.sentence_composer import PATTERNS
-from ...language_training import match_anchor_expression
+from ...language_anchor_match import match_anchor_expression
 from ...observability import observe_block
 
 logger = logging.getLogger(__name__)

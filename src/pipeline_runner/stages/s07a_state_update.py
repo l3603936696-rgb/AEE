@@ -26,6 +26,7 @@ from typing import Dict, List, Optional
 from ...state_update.update_engine import update_state
 from ...state_update.compute_coherence import append_delta as append_coherence_delta
 from ...observation.behavior_trace import build_loneliness_trace, _infer_loneliness_reason
+from .s07a_integrity_tick import run_integrity_tick as _run_integrity_tick
 
 logger = logging.getLogger(__name__)
 
@@ -369,32 +370,7 @@ def run_stage(ctx, entity) -> None:  # noqa: C901
     # [接入点 8] Step 12：完整性感知系统
     # =========================================================================
     try:
-        from pathlib import Path as _Path
-        from ...core.integrity_monitor import scan as _integrity_scan
-        from ...core.integrity_signal import update as _integrity_update
-        from ...core.integrity_signal import apply_drive_bias as _integrity_apply_drive_bias
-        from ...core.self_binding import record_accesses as _record_accesses
-        _project_root = _Path(__file__).parents[3]
-        _data_dir     = _project_root / "data"
-        # 每 tick 记一次"她用了这些部位"——绑定随使用单调累积（地板兜底冷启动）。
-        _record_accesses(_INHABITED_ZONES, _data_dir)
-        _events       = _integrity_scan(_data_dir, _project_root, entity.tick)
-        _ir           = _integrity_update(_events, entity, _data_dir)
-        # 驱动力影响：有界瞬态偏置（回收上拍+注入本拍），净效果=当前 drive_delta，
-        # 不随 tick 积分——避免隐痛底每拍 additive 把驱动力推到饱和。
-        entity.integrity_drive_bias = _integrity_apply_drive_bias(
-            entity, _ir["drive_delta"], getattr(entity, "integrity_drive_bias", {}) or {}
-        )
-        entity.integrity_behavior_bias = _ir.get("behavior_bias", {})
-        entity.active_harm             = float(_ir.get("active_harm", 0.0))
-        # 急性体感：只接收上升沿（update 基于持久化 zone_harms 算 prev，跨 daemon 重启
-        # 连续 → 持久隐痛底不会被当新伤造成虚假痛脉冲）。衰减/隐痛底 rise=0，下降留给
-        # pain 自身（s04a ×0.98）与 somatic 自然恢复，形成急性痛+自愈。
-        _harm_rise = float(_ir.get("harm_rise", 0.0))
-        _cur_pain = float(getattr(entity, "pain", 0.0))
-        entity.pain = max(0.0, min(1.0, _cur_pain + _harm_rise * _HARM_TO_PAIN))
-        _cur_tone = float(getattr(entity, "somatic_tone", 0.0))
-        entity.somatic_tone = max(-1.0, min(1.0, _cur_tone - _harm_rise * _HARM_TO_SOMA))
+        _run_integrity_tick(entity, entity.tick)
     except Exception:
         pass
 

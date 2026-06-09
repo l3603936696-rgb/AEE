@@ -18,34 +18,12 @@ import logging
 import math
 import time
 from collections import deque
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class QuenchingRecord:
-    """
-    单次消力记录。
-
-    属性：
-        drive_state_hash : 驱动力场状态的哈希（用于聚类相似状态）
-        expression       : 实际说出的表达
-        delta_unresolved_before: 执行前的 unresolved 值
-        delta_unresolved_after : 执行后的 unresolved 值
-        quenching_efficiency   : 消力效率 = before - after
-        timestamp             : 记录时间
-    """
-    drive_state_hash: str
-    expression: str
-    delta_unresolved_before: float
-    delta_unresolved_after: float
-    quenching_efficiency: float
-    timestamp: float
-    tick: int = 0  # v11.3: 记录对应的 entity tick，供温跃层判断活跃度
-    template_idx: int = -1  # v11.6: 句子模板索引，-1 表示未使用模板
-
+from .quenching_schema import QuenchingRecord
+from .quenching_helpers import _hash_state, record_to_dict, record_from_dict
 
 class QuenchingTracker:
     """
@@ -104,7 +82,7 @@ class QuenchingTracker:
                 self._history = new_history
 
         efficiency = max(0.0, delta_unresolved_before - delta_unresolved_after)
-        state_hash = self._hash_state(drive_state)
+        state_hash = _hash_state(drive_state)
 
         record = QuenchingRecord(
             drive_state_hash=state_hash,
@@ -145,7 +123,7 @@ class QuenchingTracker:
         返回：
             平均效率（0~1），无历史记录时返回 None
         """
-        state_hash = self._hash_state(drive_state)
+        state_hash = _hash_state(drive_state)
         efficiencies = self._state_cache.get(state_hash, [])
         if not efficiencies:
             return None
@@ -158,7 +136,7 @@ class QuenchingTracker:
         返回：
             历史上该状态效率最高的 expression，无记录时返回 None
         """
-        state_hash = self._hash_state(drive_state)
+        state_hash = _hash_state(drive_state)
         records_for_state = [r for r in self._history if r.drive_state_hash == state_hash]
         if not records_for_state:
             return None
@@ -166,7 +144,7 @@ class QuenchingTracker:
 
     def get_history_for_state(self, drive_state: Dict[str, float]) -> List[QuenchingRecord]:
         """返回指定状态的所有历史记录。"""
-        state_hash = self._hash_state(drive_state)
+        state_hash = _hash_state(drive_state)
         return [r for r in self._history if r.drive_state_hash == state_hash]
 
     # -------------------------------------------------------------------------
@@ -348,40 +326,6 @@ class QuenchingTracker:
         return snr >= threshold
 
     # -------------------------------------------------------------------------
-    # 辅助方法
-    # -------------------------------------------------------------------------
-
-    @staticmethod
-    def _hash_state(state: Dict[str, float]) -> str:
-        """
-        将驱动力场状态离散化为字符串哈希。只处理数值型 key。
-
-        离散化方案：
-        - 主维度（0.2 桶）: approach_drive, avoid_drive, loneliness,
-          energy, somatic_tone, boredom, approach_social/explore/urgency
-        - 沉寂维度（0.1 桶，精细区分低值域）:
-          danger_level, fatigue, stress, pain, unresolved, relief_debt
-        """
-        _COARSE = ["L", "ML", "M", "MH", "H"]           # 0.2 桶
-        _FINE = ["vL","L","LM","M","MH","H","H+","VH","VH+","MAX"]  # 0.1 桶
-        _FINE_KEYS = {
-            "danger_level", "fatigue", "stress", "pain",
-            "unresolved", "relief_debt",
-        }
-        parts = []
-        for key in sorted(state.keys()):
-            val = state[key]
-            if not isinstance(val, (int, float)):
-                continue
-            if key in _FINE_KEYS:
-                bucket = min(int(val / 0.1), 9)
-                parts.append(f"{key}={_FINE[bucket]}")
-            else:
-                bucket = min(int(val / 0.2), 4)
-                parts.append(f"{key}={_COARSE[bucket]}")
-        return "|".join(parts)
-
-    # -------------------------------------------------------------------------
     # 序列化
     # -------------------------------------------------------------------------
 
@@ -389,19 +333,7 @@ class QuenchingTracker:
         """序列化（供 EntityCore 持久化）。"""
         return {
             "history_maxlen": self.history_maxlen,
-            "records": [
-                {
-                    "drive_state_hash": r.drive_state_hash,
-                    "expression": r.expression,
-                    "delta_unresolved_before": r.delta_unresolved_before,
-                    "delta_unresolved_after": r.delta_unresolved_after,
-                    "quenching_efficiency": r.quenching_efficiency,
-                    "timestamp": r.timestamp,
-                    "tick": r.tick,
-                    "template_idx": r.template_idx,
-                }
-                for r in self._history
-            ],
+            "records": [record_to_dict(r) for r in self._history],
         }
 
     @classmethod
@@ -409,16 +341,7 @@ class QuenchingTracker:
         """从 dict 恢复。"""
         tracker = cls(history_maxlen=int(data.get("history_maxlen", 500)))
         for rdata in data.get("records", []):
-            record = QuenchingRecord(
-                drive_state_hash=str(rdata.get("drive_state_hash", "")),
-                expression=str(rdata.get("expression", "")),
-                delta_unresolved_before=float(rdata.get("delta_unresolved_before", 0.0)),
-                delta_unresolved_after=float(rdata.get("delta_unresolved_after", 0.0)),
-                quenching_efficiency=float(rdata.get("quenching_efficiency", 0.0)),
-                timestamp=float(rdata.get("timestamp", 0.0)),
-                tick=int(rdata.get("tick", 0)),
-                template_idx=int(rdata.get("template_idx", -1)),
-            )
+            record = record_from_dict(rdata)
             tracker._history.append(record)
             state_hash = record.drive_state_hash
             if state_hash not in tracker._state_cache:

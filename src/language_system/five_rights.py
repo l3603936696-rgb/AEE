@@ -15,11 +15,21 @@ FiveRightsController — 六大主权控制器（v7.0）
     - 六大主权是独立运作的，不相互依赖
 """
 
+from __future__ import annotations
+
 import logging
 from collections import deque
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+from .five_rights_helpers import (
+    _current_time,
+    five_rights_to_dict,
+    five_rights_from_dict,
+    DEFAULT_PARAMETERS,
+    check_defy_impl,
+)
 
 
 # ============================================================================
@@ -342,37 +352,12 @@ class FiveRightsController:
         返回：
             {"defy": bool, "reason": str, "efficiency_boost": float}
         """
-        if param_snapshot is not None:
-            try:
-                if hasattr(param_snapshot, "get_raw_value"):
-                    self.pressure_threshold = float(param_snapshot.get_raw_value("language.defy.pressure_threshold", self.pressure_threshold))
-                    self.resistance_boost = float(param_snapshot.get_raw_value("language.defy.resistance_quenching_boost", self.resistance_boost))
-                elif isinstance(param_snapshot, dict):
-                    self.pressure_threshold = float(param_snapshot.get("language.defy.pressure_threshold", self.pressure_threshold))
-                    self.resistance_boost = float(param_snapshot.get("language.defy.resistance_quenching_boost", self.resistance_boost))
-            except Exception:
-                pass
-
-        pressure = float(user_intent.get("pressure", 0.0))
-        content = str(user_intent.get("content", ""))
-
-        if pressure > self.pressure_threshold:
+        result = check_defy_impl(self, user_intent, drive_state, param_snapshot)
+        if result.get("defy"):
             logger.info(
-                f"[FiveRights] 顶撞权触发: pressure={pressure:.3f}, content='{content[:30]}...'"
+                f"[FiveRights] 顶撞权触发: pressure={result['pressure']:.3f}"
             )
-            return {
-                "defy": True,
-                "reason": "外部侵入被系统判定为次优消力策略，强制执行将破坏内在一致性。",
-                "efficiency_boost": self.resistance_boost,
-                "pressure": pressure,
-            }
-
-        return {
-            "defy": False,
-            "reason": "",
-            "efficiency_boost": 1.0,
-            "pressure": pressure,
-        }
+        return result
 
     # -------------------------------------------------------------------------
     # 6. 物理重力
@@ -405,44 +390,9 @@ class FiveRightsController:
 
     def to_dict(self) -> Dict[str, Any]:
         """序列化（不含 MirrorLearner 实例）。"""
-        return {
-            "avoid_high_threshold": self.avoid_high_threshold,
-            "lock_window": self.lock_window,
-            "defensive_lock": self._defensive_lock,
-            "defensive_lock_avoid_ref": self._defensive_lock_avoid_ref,
-            "fatigue_rate": self.fatigue_rate,
-            "recovery_rate": self.recovery_rate,
-            "avoid_bias_cap": self.avoid_bias_cap,
-            "social_fatigue": self._social_fatigue,
-            "negative_strength_decay": self.negative_strength_decay,
-            "forget_pending": list(self._forget_pending),
-            "forget_registry": self._forget_registry,
-            "pressure_threshold": self.pressure_threshold,
-            "resistance_boost": self.resistance_boost,
-        }
+        return five_rights_to_dict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "FiveRightsController":
         """从 dict 恢复（不含 MirrorLearner 实例，需要外部注入）。"""
-        ctrl = cls(
-            avoid_high_threshold=float(data.get("avoid_high_threshold", 0.75)),
-            lock_window=float(data.get("lock_window", 0.05)),
-            fatigue_rate=float(data.get("fatigue_rate", 0.015)),
-            recovery_rate=float(data.get("recovery_rate", 0.008)),
-            avoid_bias_cap=float(data.get("avoid_bias_cap", 0.30)),
-            negative_strength_decay=float(data.get("negative_strength_decay", 0.05)),
-            pressure_threshold=float(data.get("pressure_threshold", 0.60)),
-            resistance_boost=float(data.get("resistance_boost", 1.50)),
-        )
-        ctrl._defensive_lock = bool(data.get("defensive_lock", False))
-        ctrl._defensive_lock_avoid_ref = float(data.get("defensive_lock_avoid_ref", 0.0))
-        ctrl._social_fatigue = float(data.get("social_fatigue", 0.0))
-        for eid in data.get("forget_pending", []):
-            ctrl._forget_pending.append(int(eid))
-        ctrl._forget_registry = dict(data.get("forget_registry", {}))
-        return ctrl
-
-
-def _current_time() -> float:
-    import time
-    return time.time()
+        return five_rights_from_dict(data, DEFAULT_PARAMETERS)

@@ -28,6 +28,7 @@ from ...core import emerge_behavior as _emerge_behavior
 from ...entity_state import _make_core_wrapper
 from ...parameter_system.access import get_param
 from ..utils import _build_decision_params, _process_tool_gaps
+from .s04b_self_mapping import run_self_mapping as _run_self_mapping
 
 _DRIVE_WRITE_WHITELIST = frozenset({
     "energy", "loneliness", "loneliness_core", "loneliness_surface",
@@ -206,40 +207,9 @@ def run_stage(ctx, entity) -> None:
 
     # ---- Step 8.2: 元认知感知（self_mapping，v1.0）----
     try:
-        from ...self_mapping import SelfBodyMap, NarrativeGenerator, build_relations_from_wm
-        state_for_mapping = entity.to_state_snapshot()
-        _self_body_map = SelfBodyMap(tick=entity.tick)
-        _self_body_map.update(state_snapshot, state_for_mapping)
-        _self_body_map.sync_relations(entity.wm_rules)
-        _narrative_record = _self_body_map.generate_narrative()
-        _trace("self_mapping_sense", True, {
-            "changes": _self_body_map._changes,
-            "relation_count": len(_self_body_map.relations),
-            "narrative": _narrative_record["prediction"] if _narrative_record else None,
-        })
-        _prev_narrative_tick = getattr(entity, "_prev_self_narrative", None)
-        _verification_result = None
-        if _prev_narrative_tick is not None:
-            _prev_narr = _prev_narrative_tick.get("record")
-            _prev_rel_id = _prev_narrative_tick.get("relation_id")
-            if _prev_narr and _prev_rel_id:
-                _target_rel = next(
-                    (r for r in _self_body_map.relations
-                     if r.cause == _prev_narr.get("cause") and r.effect == _prev_narr.get("effect")),
-                    None
-                )
-                if _target_rel:
-                    _ng = NarrativeGenerator()
-                    _verification_result = _ng.verify(_prev_narr, _self_body_map.parts, _target_rel)
-        if _narrative_record:
-            entity._prev_self_narrative = _narrative_record
-        else:
-            entity._prev_self_narrative = None
-        entity._coherence_meta = _self_body_map.get_coherence_meta()
-        _trace("self_mapping_verify", True, {
-            "verification": _verification_result,
-            "coherence_meta": entity._coherence_meta,
-        })
+        _narrative_record, _coherence_meta = _run_self_mapping(
+            entity, state_snapshot, entity.wm_rules, _trace,
+        )
     except Exception as e:
         _trace("self_mapping_sense", False, {}, str(e))
         entity._prev_self_narrative = None
