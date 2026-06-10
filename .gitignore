@@ -1,69 +1,37 @@
-# XIA 项目 .gitignore
-# 保持仓库干净，不提交运行时生成物和敏感信息
+# AEE (Antagonistic Emergence Engine)
 
-# API Key / 敏感配置
-.env
-config/deepseek_key.txt
-
-# Python
+# ========== 运行时生成物 ==========
 __pycache__/
 *.pyc
 *.pyo
-.venv/
-venv/
-
-# 运行时数据
-data/
-logs/
-workspace/
+.pytest_cache/
 *.sock
 *.pid
+*.log
 
-# 备份目录
-src_backup_20260510/
-legacy_archive/
+# ========== 敏感信息 ==========
+.env
+config/deepseek_key.txt
 
-# 第三方库（不推，用 requirements.txt 代替）
+# ========== 第三方库（用 requirements.txt 管理） ==========
 lib/
 
-# AI 生成的旧报告（本地保留，不推）
-# docs/ 目录本身保留，architecture.md 会推上去
-
-# 个人记忆文件
-MEMORY.md
-
-# IDE / AI assistant configs (personal, not project)
+# ========== 个人 IDE / Agent 配置 ==========
 .vscode/
-.idea/
 .claude/
 .cursor/
-.gemini/
 .kiro/
 .qoder/
-.mcp.json
-.opencode.json
+.code-review-graph/
+.agents/
+
+# ========== OS ==========
+.DS_Store
+Thumbs.db
 *.swp
 *.swo
 *~
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Root-level runtime artifacts (moved to archive dirs, keep tracked)
-/daemon*.log
-/diag_output.txt
-/_watch_*.out
-/_dialogue_decoded.txt
-/tmp_*.py
-/tmp_*.json
-
-# Agent/task runtime artifacts
-.agents/tasks/**/*.log
-docs/reports/diagnostics/*.out
-
-# Node (frontend)
-frontend/node_modules/
-frontend/dist/
-# Added by code-review-graph
-.code-review-graph/
+# ========== 前端（如果未来加入） ==========
+# frontend/node_modules/
+# frontend/dist/
