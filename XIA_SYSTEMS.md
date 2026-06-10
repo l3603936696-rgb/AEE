@@ -489,7 +489,6 @@ drive field -> active dimensions -> focal rules (by overlap) -> questions + sugg
 | `state_pattern_memory_helpers.py` | Math tools (cosine sim, EMA update, forge, bootstrap) |
 | `somatic_self_awareness.py` | **Somatic meta-awareness**: somatic decoding -> self-reference -> awareness intensity modulation |
 | `narrative_fragments.py` | **Narrative fragments**: action self-reference / causal narrative / state trajectory, softmax sampling |
-| `narrative_context.py` | Context and lookup-table construction for narrative fragment scoring |
 | `bge_analyzer.py` | BGE-small-zh-v1.5 embedding anchor matching (LLM-replacement approach) |
 | `concept_graph.py` | Concept graph: somatic words -> material/force/shape/abstract attribute combinations |
 | `input_packet.py` | Input packet: topic_anchor / relational_direction / social_intent |

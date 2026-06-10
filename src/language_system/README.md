@@ -84,7 +84,6 @@ expression feedback + quenching + memory write-back
 | File | Purpose |
 | --- | --- |
 | `narrative_fragments.py` | Narrative fragment scoring |
-| `narrative_context.py` | Narrative context construction |
 | `reflection_layer.py` | Reflection-layer hooks |
 | `self_counsel.py` | Self-counsel relief loop |
 | `social_comprehension.py` | Social comprehension helpers |
@@ -106,7 +105,6 @@ expression feedback + quenching + memory write-back
 | `stereotype_tree_helpers.py` | Tree traversal/context helpers |
 | `stereotype_tree_api.py` | Convenience API |
 | `stereotype_tree_stage3.py` | Stage-3 similarity/fork methods |
-| `stereotype_tree_stage3_helpers.py` | Stage-3 helper functions |
 | `stereotype_forks.py` | Fork handling |
 | `stereotype_learner.py` | Public stereotype learner API |
 | `stereotype_learner_core.py` | Learner implementation |
@@ -121,3 +119,13 @@ expression feedback + quenching + memory write-back
   API modules.
 - When moving a function, preserve compatibility imports or update
   `src/language_system/__init__.py`.
+
+## Archived Unwired Modules
+
+The following files were moved to `src/legacy_unwired/` because they are not
+currently imported by the runtime pipeline:
+
+| File | Reason |
+| --- | --- |
+| `narrative_context.py` | Older narrative context builder; current flow uses `narrative_fragments.try_narrative_expression()` |
+| `stereotype_tree_stage3_helpers.py` | Helper-style duplicate of logic already present in `stereotype_tree_stage3.py` |
