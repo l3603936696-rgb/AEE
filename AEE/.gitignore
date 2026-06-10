@@ -1,0 +1,36 @@
+# AEE (Antagonistic Emergence Engine)
+
+# ========== 运行时生成物 ==========
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.sock
+*.pid
+*.log
+
+# ========== 敏感信息 ==========
+.env
+config/deepseek_key.txt
+
+# ========== 第三方库（用 requirements.txt 管理） ==========
+lib/
+
+# ========== 个人 IDE / Agent 配置 ==========
+.vscode/
+.claude/
+.cursor/
+.kiro/
+.qoder/
+.code-review-graph/
+
+# ========== OS ==========
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ========== 前端（如果未来加入） ==========
+# frontend/node_modules/
+# frontend/dist/

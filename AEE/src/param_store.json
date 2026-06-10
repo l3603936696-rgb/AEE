@@ -1,0 +1,252 @@
+{
+  "thresholds": {
+    "narrative_memory_pressure_note_gate": 0.52,
+    "narrative_compactor_mem_pressure_gate": 0.7,
+    "narrative_memory_pressure_critical_gate": 0.82,
+    "narrative_memory_pressure_event_gate": 0.92,
+    "pipeline_max_execution_time_ms": 5000,
+    "thinking_max_steps": 2,
+    "thinking_timeout_ms": 2000,
+    "peer_uncaught_force_reply_streak": 3,
+    "world_model_max_rules": 200,
+    "world_model_snapshot_retention": 50,
+    "web_search.enabled": true,
+    "web_search.info_hunger_threshold": 0.6,
+    "web_search.wm_hit_threshold": 0.3,
+    "web_search.intent_intensity_threshold": 0.6,
+    "web_search.max_results": 5,
+    "web_search.timeout_seconds": 8.0,
+    "debug_log_decision_trace": true
+  },
+  "drives": {
+    "curiosity_baseline": 0.2,
+    "info_hunger_baseline": 0.24
+  },
+  "mechanisms": {
+    "enable_parameter_decay": false,
+    "enable_belief_shock": false,
+    "enable_body_evolution": false
+  },
+  "dynamics": {},
+  "_system": {
+    "version": "1.0.0",
+    "created_at": null,
+    "last_modified_at": null,
+    "last_modified_by": null
+  },
+  "connection": {
+    "connection.w_prediction": 1.0,
+    "connection.w_somatic": 1.0,
+    "connection.w_tension": 1.0,
+    "connection.loneliness_recovery_rate": 0.35,
+    "connection.loneliness_rejection_multiplier": 1.8,
+    "connection.loneliness_connection_threshold": 0.1,
+    "connection.release_lag": 0.7
+  },
+  "experience": {
+    "connection.positive_bias_strength": 0.05,
+    "connection.negative_bias_strength": 0.02,
+    "connection.positive_threshold": 0.1,
+    "connection.negative_threshold": 0.1
+  },
+  "coherence": {
+    "connection.coherence_high_threshold": 0.7,
+    "connection.coherence_low_threshold": 0.3,
+    "connection.coherence_amplify": 1.3,
+    "connection.coherence_attenuate": 0.5,
+    "connection.negative_damping_floor": 0.7,
+    "connection.damping_scale": 0.3,
+    "connection.recent_deltas_maxlen": 5
+  },
+  "observation": {
+    "observation.buffer_size": 50,
+    "observation.trend_window": 10,
+    "observation.profile_window": 50,
+    "observation.contamination_coefficient": 0.3
+  },
+  "emotion_particle": {
+    "emotion_particle.max_capacity": 200,
+    "emotion_particle.inertia_weight": 0.3,
+    "emotion_particle.ambient_weight": 0.5,
+    "emotion_particle.log_half_life_s": 1800,
+    "emotion_particle.min_density": 0.0,
+    "emotion_particle.lookup_density_0": 0.0,
+    "emotion_particle.lookup_density_1": 0.3,
+    "emotion_particle.lookup_density_2": 0.6,
+    "emotion_particle.lookup_density_3": 1.0,
+    "emotion_particle.lookup_flow_0": 1.0,
+    "emotion_particle.lookup_flow_1": 0.9,
+    "emotion_particle.lookup_flow_2": 0.7,
+    "emotion_particle.lookup_flow_3": 0.4,
+    "emotion_particle.slow_delay_s": 30
+  },
+  "emotion_decay": {
+    "emotion_decay.boredom_despair_t": 7200,
+    "emotion_decay.boredom_futility_t": 3600,
+    "emotion_decay.joy_t": 3600,
+    "emotion_decay.fear_t": 1800,
+    "emotion_decay.anger_t": 2400,
+    "emotion_decay.sadness_t": 5400,
+    "emotion_decay.surprise_t": 600,
+    "emotion_decay.inertia_t": 900
+  },
+  "emotion_projection": {
+    "emotion_projection.mainline_cap": 1.0,
+    "emotion_projection.daily_cap": 0.6,
+    "emotion_projection.memory_cap": 0.8,
+    "emotion_projection.mainline_to_daily_damping": 0.7,
+    "emotion_projection.daily_to_mainline_damping": 0.4,
+    "emotion_projection.memory_to_mainline_damping": 0.5,
+    "emotion_projection.memory_to_daily_damping": 0.3,
+    "emotion_projection.memory_cooldown_s": 300,
+    "emotion_projection.memory_repeat_decay": 0.5
+  },
+  "emotion": {
+    "emotion_insight.high_impact_threshold": 0.85,
+    "emotion_differentiation.observation_window": 200,
+    "emotion_differentiation.min_stabilization": 0.1
+  },
+  "language": {
+    "language.quenching.high_threshold": 0.65,
+    "language.quenching.upgrade_threshold": 0.7,
+    "language.quenching.min_contexts": 3,
+    "language.quenching.history_maxlen": 500,
+    "language.thermal.high_energy_scale": 1.3,
+    "language.thermal.low_energy_scale": 0.6,
+    "language.thermal.energy_threshold": 0.4,
+    "language.thermal.decay_rate": 0.02,
+    "language丰度.low_threshold": 0.6,
+    "language.self_close.avoid_high_threshold": 0.75,
+    "language.self_close.lock_window": 0.05,
+    "language.social_fatigue.rate": 0.015,
+    "language.social_fatigue.recovery_rate": 0.008,
+    "language.social_fatigue.avoid_bias_cap": 0.3,
+    "language.mirror.bias_strength": 0.4,
+    "language.forget.negative_strength_decay": 0.05,
+    "language.defy.pressure_threshold": 0.6,
+    "language.defy.resistance_quenching_boost": 1.5
+  },
+  "decision": {
+    "survival_override_threshold": 0.85
+  },
+  "personality": {
+    "trust_threshold": 0.5,
+    "rejection_sensitivity": 0.3,
+    "social_risk_weight": 0.3,
+    "introverted_bias": 0.2,
+    "extroverted_bias": 0.1,
+    "novelty_reward": 0.5,
+    "recovery_rate": 1.0
+  },
+  "web_search": {
+    "info_hunger_threshold": 0.6
+  },
+  "conversion": {
+    "conversion.approach_synthesis.social": 0.4,
+    "conversion.approach_synthesis.explore": 0.35,
+    "conversion.approach_synthesis.urgency": 0.25,
+    "conversion.quench_feedback.quench_rate": 0.25,
+    "conversion.quench_feedback.approach_release": 0.3,
+    "conversion.quench_feedback.avoid_release": 0.3,
+    "conversion.quench_feedback.somatic_comfort": 0.15,
+    "conversion.failure_metabolite.approach_suppress": 0.15,
+    "conversion.failure_metabolite.avoid_increase": 0.12,
+    "conversion.failure_metabolite.curiosity_suppress": 0.1,
+    "conversion.failure_metabolite.somatic_damage": 0.08,
+    "conversion.conflict_to_unresolved.conflict_rate": 0.04,
+    "conversion.conflict_to_unresolved.unresolved_decay": 0.98,
+    "conversion.conflict_to_unresolved.introspection_gain": 1.5,
+    "conversion.emotion_drive_mod.approach.joy": 0.15,
+    "conversion.emotion_drive_mod.approach.anger": 0.25,
+    "conversion.emotion_drive_mod.approach.excitement": 0.2,
+    "conversion.emotion_drive_mod.approach.sadness": -0.2,
+    "conversion.emotion_drive_mod.approach.anxiety": -0.1,
+    "conversion.emotion_drive_mod.avoid.fear": 0.3,
+    "conversion.emotion_drive_mod.avoid.disgust": 0.35,
+    "conversion.emotion_drive_mod.avoid.anxiety": 0.15,
+    "conversion.emotion_drive_mod.avoid.anger": -0.2,
+    "conversion.vocab_acquisition.min_comprehension": 0.3,
+    "conversion.vocab_acquisition.exposure_per_hit": 0.2,
+    "conversion.vocab_acquisition.ask_threshold": 1.0,
+    "conversion.vocab_acquisition.exposure_decay": 0.99,
+    "conversion.vocab_acquisition.max_asks_per_tick": 1,
+    "conversion.repetition_decay.decay_per_use": 0.15,
+    "conversion.repetition_decay.recovery_rate": 0.02,
+    "conversion.repetition_decay.floor": 0.2,
+    "conversion.repetition_decay.window_ticks": 200,
+    "conversion.response_pressure.coefficient": 0.03,
+    "conversion.response_pressure.min_comprehension": 0.3,
+    "conversion.feedback_loop.acute_boost_scale": 0.05,
+    "conversion.feedback_loop.chronic_threshold": 5,
+    "conversion.feedback_loop.chronic_drift_rate": 0.002,
+    "conversion.feedback_loop.chronic_signal_decay": 0.9,
+    "conversion.feedback_loop.chronic_tick_decay": 0.98,
+    "conversion.feedback_loop.chronic_min_quench": 0.1,
+    "conversion.feedback_loop.weight_ceiling": 0.8,
+    "conversion.feedback_loop.weight_floor": 0.05,
+    "approach_synthesis": {
+      "social": 0.33845,
+      "explore": 0.45,
+      "urgency": 0.21155
+    },
+    "quench_feedback": {
+      "quench_rate": 0.25,
+      "approach_release": 0.3,
+      "avoid_release": 0.3,
+      "somatic_comfort": 0.15
+    },
+    "failure_metabolite": {
+      "approach_suppress": 0.15,
+      "avoid_increase": 0.12,
+      "curiosity_suppress": 0.1,
+      "somatic_damage": 0.08
+    },
+    "conflict_to_unresolved": {
+      "conflict_rate": 0.04,
+      "unresolved_decay": 0.98,
+      "introspection_gain": 1.5
+    },
+    "emotion_drive_mod": {
+      "approach": {
+        "joy": 0.15,
+        "anger": 0.25,
+        "excitement": 0.2,
+        "sadness": -0.2,
+        "anxiety": -0.1
+      },
+      "avoid": {
+        "fear": 0.3,
+        "disgust": 0.35,
+        "anxiety": 0.15,
+        "anger": -0.2
+      }
+    },
+    "vocab_acquisition": {
+      "min_comprehension": 0.3,
+      "exposure_per_hit": 0.2,
+      "ask_threshold": 1.0,
+      "exposure_decay": 0.99,
+      "max_asks_per_tick": 1.0
+    },
+    "repetition_decay": {
+      "decay_per_use": 0.15,
+      "recovery_rate": 0.02,
+      "floor": 0.2,
+      "window_ticks": 200.0
+    },
+    "response_pressure": {
+      "coefficient": 0.03,
+      "min_comprehension": 0.3
+    },
+    "feedback_loop": {
+      "acute_boost_scale": 0.05,
+      "chronic_threshold": 5.0,
+      "chronic_drift_rate": 0.002,
+      "chronic_signal_decay": 0.9,
+      "chronic_tick_decay": 0.98,
+      "chronic_min_quench": 0.1,
+      "weight_ceiling": 0.8,
+      "weight_floor": 0.05
+    }
+  }
+}
