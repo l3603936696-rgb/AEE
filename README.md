@@ -20,6 +20,17 @@ development workflow.
 - Episodic memory and world-model update modules that record experience and feed later behavior.
 - A multi-agent engineering workflow using `.agents/tasks/` packages for specs, plans, validation notes, and review handoff.
 
+## Current Interface Scope
+
+XIA currently ships as a backend/runtime project, not as a desktop or web app.
+
+- The daemon is a long-running Python process, started with `python -m src.daemon.daemon`.
+- Chat access is available through the local `channel/` IPC client.
+- Active reach-out messages are surfaced through `reach_client.py`.
+- There is no maintained frontend in the current codebase. Earlier Electron/Vite
+  experiments were removed and archived so the runtime can keep iterating without
+  carrying an inactive UI surface.
+
 ## Quick Review Guide
 
 If you only have a few minutes, start here:
@@ -104,7 +115,7 @@ when the user sends a message. When the action system chooses a `reach` action,
 - `data/xia_messages/notification_queue.jsonl`
 - `data/xia_messages/history/`
 
-The response path is file-based. A listener or UI writes the user's reply to the
+The response path is file-based. The local listener writes the user's reply to the
 runtime-generated `data/xia_messages/response.json`, and the background runtime
 reads that reply on a later tick through `src/daemon/tick_input.py`.
 
@@ -112,14 +123,10 @@ Relevant files:
 
 - `src/action_system/reach.py`
 - `reach_client.py`
-- `frontend/electron/xia-bridge.js`
-- `frontend/src/components/Actions/Actions.jsx`
 
 Current limitation: this is a working local message path, not a polished push
-notification system. If `reach_client.py` or the optional desktop UI is not
-running, the message is still written to disk but may not be visible to the
-user. The frontend currently polls pending actions rather than providing a
-guaranteed real-time notification surface.
+notification system. If `reach_client.py` is not running, the message is still
+written to disk but may not be visible to the user.
 
 ### Language and Expression
 
@@ -162,7 +169,7 @@ Relevant files:
 ## Architecture
 
 ```text
-IPC / optional desktop status UI
+IPC / local HTTP clients
         |
         v
 daemon.py
@@ -203,7 +210,6 @@ pipeline_runner
 | `src/world_model_update/` | Rule induction, contradiction handling, decay |
 | `src/thinking_system/` | Internal reasoning, semantic base, covariance tracking |
 | `src/observability/` | Runtime instrumentation and reporting |
-| `frontend/` | Optional Electron/Vite status display |
 | `.agents/tasks/` | Multi-agent task packages and validation notes |
 
 ## Engineering Work Demonstrated
@@ -237,7 +243,6 @@ python -m py_compile @files
 Requirements:
 
 - Python 3.12+
-- Node.js 18+ if using the optional desktop status UI
 - Optional LLM provider configuration via `.env`
 
 Background runtime:
@@ -246,14 +251,6 @@ Background runtime:
 pip install -r requirements.txt
 copy .env.example .env
 python -m src.daemon.daemon
-```
-
-Optional desktop status UI:
-
-```powershell
-cd frontend
-npm install
-npm run electron:dev
 ```
 
 Optional active reach-out listener:
@@ -266,6 +263,8 @@ This listener watches `data/xia_messages/notification_queue.jsonl` and
 `pending.json`, displays active messages, and writes user responses back to
 `response.json`.
 
+There is currently no maintained frontend in this repository.
+
 ## Current Status
 
 This is an active research prototype, not a polished product or production
@@ -275,9 +274,8 @@ are still being split and cleaned up.
 
 The active reach-out feature is implemented as a local file-backed loop. It can
 record and surface messages, but the user experience still depends on running a
-listener or opening the optional UI. A stronger version would make active
-messages appear directly in the chat surface or as reliable desktop
-notifications.
+listener. A stronger version would make active messages appear directly in the
+chat surface or as reliable desktop notifications.
 
 Recent cleanup reduced several large files below the project 400-line module
 limit, including background runtime, action-system, narrative, and

@@ -10,7 +10,7 @@ Daemon Server — XIA 长期记忆服务主进程
     DaemonServer
         ├── TickEngine    — 后台 tick 推进
         ├── IPCServer     — Unix Domain Socket 请求处理
-        └── HTTPServer    — HTTP API（供 Windows 前端访问）
+        ??? HTTPServer    ? local HTTP API
 
 启动：
     python3 -m src.daemon.daemon
@@ -327,7 +327,7 @@ def run_daemon(tick_interval: float = 30.0, http_port: int = 8765, ipc_port: int
     # 启动 HTTP API 服务器（供 Windows 前端访问）
     http_server = HTTPServer(ipc_server=ipc_server, port=http_port)
     http_server.start()
-    logger.info(f"HTTP API: http://127.0.0.1:{http_port} (for Windows frontend)")
+    logger.info(f"HTTP API: http://127.0.0.1:{http_port} (local clients)")
 
     # 启动后台 Tick Engine
     tick_engine.start()

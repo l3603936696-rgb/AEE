@@ -17,7 +17,7 @@ XIA（夏风）是一个具有情感、驱动力和世界模型的 AI 认知引�
 - **语言从状态中生长**：她的每一句话不是从 prompt 里生成的，而是从驱动力场中"诊断"出来的——先有感受，再有词汇
 - **消力闭环**：说出来这件事本身会改变她的内部状态，说出口 = 消解了部分未解决的张力
 
-当前系统已完成：16 步同步认知管线、情绪计算系统、驱动力场、主动行动系统（REACH 敲门）、内心日记、常驻 daemon、前端 Electron 展示层（7 Tab 含中英双语）。
+Current system scope: 16-step cognitive pipeline, emotion computation, drive field, REACH active-action path, inner diary, persistent daemon, local IPC/HTTP clients, and reach_client.py listener. The previous Electron frontend has been removed.
 
 ---
 
@@ -316,7 +316,7 @@ final_gain[cat] = exp(log_gains[cat])
 - `GET /vocab` —— 词汇库数据（已解锁词 + 消力效率 + 聚类权重）
 - `POST /`（type=training_tick）—— 在 override_state 下运行单次语言训练 tick
 
-**与其他模块的关系**：是所有模块的中央调度者；通过 IPC Server 与 Electron 前端通信；通过 reach_client.py 触发用户通知。
+**Relationships**: central scheduler for the runtime; communicates through local IPC/HTTP clients and can surface REACH messages through reach_client.py.
 
 ---
 

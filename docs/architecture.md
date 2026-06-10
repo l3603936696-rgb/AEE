@@ -102,7 +102,7 @@ src/
 ├── daemon/
 │   ├── daemon.py               — process entry, IPC server
 │   ├── tick_engine.py          — background tick loop, autonomous action loop
-│   └── ipc_client.py           — frontend ↔ daemon socket protocol
+?   ??? ipc_client.py           - local client to daemon socket protocol
 ├── emotion_system/
 │   ├── particle_field.py       — emotion particle simulation
 │   ├── decay_engine.py         — temporal decay of emotion dimensions
@@ -133,7 +133,7 @@ src/
 ## Infrastructure
 
 - **Daemon**: persistent Python process, IPC via Unix socket
-- **Frontend**: Electron + React (7 views: conversation, state, training, diary, actions, inner state, settings)
+- **Local clients**: CLI channel, reach listener, and local HTTP/IPC API. No maintained frontend is currently shipped.
 - **LLM**: DeepSeek API (stdlib `urllib`, no SDK dependency), Ollama as local fallback
 - **Storage**: SQLite (episodes), JSON (entity state, world model)
 - **Python**: 3.12+

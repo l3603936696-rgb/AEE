@@ -89,7 +89,7 @@ formatting. Match existing style. If you notice unrelated dead code, mention it
 Do not edit:
 
 - Generated logs, caches, model artifacts, or runtime data
-- Files under `src/`, `tests/`, `data/`, `models/`, `frontend/`, `channel/`,
+- Files under `src/`, `tests/`, `data/`, `models/`, `channel/`,
   `net/`, `config/` unless explicitly within task scope
 - Secrets, `.env`, or unrelated memory files
 

@@ -1,21 +1,19 @@
 """
 验证脚本: _handle_training_tick 返回值调用链完整性检查
 
-目的: 验证从 daemon._handle_training_tick → frontend result.best 整条链路上，
-     返回值没有多余嵌套层，前端可以直接访问 result.best / result.second / result.third。
+Purpose: verify the daemon._handle_training_tick -> HTTP result.best contract.
+     The result should stay flat enough for local clients to read result.best / result.second / result.third.
 
 调用链:
-  1. frontend:  window.xia.runTrainingTick(override)
+  1. client:    POST / with type=training_tick
                   ↓
-  2. preload:    ipcRenderer.invoke('xia:runTrainingTick', overrideState)
+  2. HTTPServer.do_POST(): wraps the JSON into IPCRequest
                   ↓
-  3. main.js:    xiaClient.runTrainingTick(overrideState)
+  3. IPCServer._dispatch(): routes type=training_tick
                   ↓
-  4. xia-bridge: _postRequest({ type: 'training_tick', payload: { override_state } })
-                  ↓
-  5. daemon HTTP: do_POST() → IPCServer._dispatch(req)
-                  ↓
-  6. daemon:      _handle_training_tick() → run_language_training_tick()
+  4. daemon: _handle_training_tick() -> run_language_training_tick()
+
+
 
 运行:
   python E:/XIA/scripts/verify_training_tick.py
@@ -274,16 +272,16 @@ def main():
         print(f"\n  [VERDICT: PASS]")
         print(f"  修复逻辑正确。daemon._handle_training_tick 直接返回")
         print(f"  run_language_training_tick() 的结果，IPCResponse.success 将其包装为")
-        print(f"  {{ result: <扁平数据 best/second/third/...> }}，前端可以直接访问 result.best。")
+        print("  { result: <flat data best/second/third/...> }, so local clients can read result.best.")
         print(f"\n  完整数据路径:")
         print(f"    run_language_training_tick()")
         print(f"      → _handle_training_tick() [daemon.py:243]")
         print(f"        → IPCResponse.success(id, result, ...) [protocol.py:144]")
         print(f"          → HTTP response body [do_POST:299 返回 result]")
-        print(f"            → xia-bridge._postRequest() → JSON [xia-bridge.js:48]")
-        print(f"              → xia-bridge.runTrainingTick: response.result [xia-bridge.js:307]")
-        print(f"                → window.xia.runTrainingTick() [preload.js:39]")
-        print(f"                  → React Training.jsx: data.best [Training.jsx:149]")
+        print(f"            -> local HTTP JSON client")
+        print(f"              -> result.best / result.second / result.third")
+
+
     else:
         print(f"\n  [VERDICT: FAIL]")
         print(f"  存在调用链问题，请检查上述输出。")
