@@ -33,7 +33,7 @@ XIA currently ships as a backend/runtime project, not as a desktop or web app.
 
 - The daemon is started with `python -m src.daemon.daemon`.
 - Chat access is available through the local `channel/` IPC client.
-- Active reach-out messages are surfaced through `reach_client.py`.
+- Active reach-out messages are surfaced through `entities/reach_client.py`.
 - There is no maintained frontend in the current codebase. Earlier Electron/Vite
   experiments were removed and archived so the runtime can keep iterating without
   carrying an inactive UI surface.
@@ -51,7 +51,6 @@ If you only have a few minutes, start here:
 | `src/action_system/` | Tool execution, action parsing, reach behavior, failure handling |
 | `src/memory_hub/` | Episodic memory, insights, TetraMem fallback/persistence |
 | `src/world_model_update/` | Rule induction, contradiction handling, decay/merge/verification |
-| `XIA_SYSTEMS.md` | Maintainer-facing system index and cross-module map |
 | `.agents/tasks/` | Task packages with specs, plans, validation notes, and review handoff |
 
 ## Technical Highlights
@@ -108,10 +107,10 @@ on a later tick through `src/daemon/tick_input.py`.
 Relevant files:
 
 - `src/action_system/reach.py`
-- `reach_client.py`
+- `entities/reach_client.py`
 
 Current limitation: this is a working local message path, not a polished push
-notification system. If `reach_client.py` is not running, the message is still
+notification system. If `entities/reach_client.py` is not running, the message is still
 written to disk but may not be visible to the user.
 
 ## Architecture
@@ -200,7 +199,7 @@ python -m channel
 Optional active reach-out listener:
 
 ```powershell
-python reach_client.py
+python entities/reach_client.py
 ```
 
 There is currently no maintained frontend in this repository.
