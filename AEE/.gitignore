@@ -23,6 +23,7 @@ lib/
 .kiro/
 .qoder/
 .code-review-graph/
+.agents/
 
 # ========== OS ==========
 .DS_Store
