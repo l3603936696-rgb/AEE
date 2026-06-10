@@ -31,9 +31,9 @@ Use this section to quickly find which files to inspect when working on a specif
 | --- | --- |
 | Language output (anchor/templating) | `src/language_system/` |
 | Language training anchor matching | `src/language_training.py`, `src/language_anchor_match.py` |
-| Language output (LLM response) | `src/pipeline_runner/stages/s06_language/` |
+| Language output (LLM response) | `src/pipeline_runner/stages/s06_language.py`, `src/pipeline_runner/stages/s06b_output.py` |
 | Daemon tick behavior | `src/daemon/tick_engine.py`, `src/daemon/daemon.py` |
-| State update mechanics | `src/state_update/`, `src/entity_state.py` |
+| State update mechanics | `src/state_update/`, `src/entity_state.py`, `src/entity_persistence.py` |
 | World model learning | `src/world_model_update/` |
 | Tool synthesis or introspection | `src/tool_synthesizer/`, `src/tool_introspection/` |
 | Action execution (V7) | `src/action_system/` |
@@ -104,7 +104,7 @@ s01_init
   -> s02_perception
     -> s02b_input_drive_map (drive_map_layer1/2/utils)
     -> [interpretation_competition]
-    -> s02c_delayed_understand
+    -> s02c_delayed_understanding
   -> s03_think
   -> s04a_meta
   -> s04b_emerge
@@ -132,7 +132,7 @@ All stages share a mutable context container (SimpleNamespace). Stage functions 
 - `drive_map_layer2`: `compute_input_drive()` - looks up input embedding, returns `drive_weighted`
 - `drive_map_utils`: shared utility functions
 - `interpretation_competition.py`: multiple experience candidates compete continuously; competitiveness = experience_strength * f(state) * conversion_coefficient; tension suspension state permeates language output
-- `s02c_delayed_understand`: when confidence is below threshold, enters pending queue, reactivated by similar input on future ticks
+- `s02c_delayed_understanding`: when confidence is below threshold, enters pending queue, reactivated by similar input on future ticks
 
 ### Submodules
 
@@ -141,7 +141,7 @@ All stages share a mutable context container (SimpleNamespace). Stage functions 
 | `stages/s01_init.py` | Initialization |
 | `stages/s02_perception.py` | Semantic perception + drives + somatic |
 | `stages/s02b_input_drive_map/` | Input to drive mapping (BGE) |
-| `stages/s02c_delayed_understand.py` | Delayed understanding |
+| `stages/s02c_delayed_understanding.py` | Delayed understanding |
 | `interpretation_competition/` | Interpretation competition submodules |
 | `stages/s03_think.py` | Emotion particles + thinking |
 | `stages/s04a_meta.py` | Meta-cognitive adjustment |
@@ -149,9 +149,9 @@ All stages share a mutable context container (SimpleNamespace). Stage functions 
 | `stages/s04b_self_mapping.py` | Self-mapping + narrative generation (extracted from s04b) |
 | `stages/s05_behavior.py` | Connection depth + decision assembly |
 | `stages/s05b_pattern_feedback.py` | BP feedback loop (extracted from s05) |
-| `stages/s06_language/` | LLM output stage |
 | `stages/s06a_candidates.py` | Language candidate generation |
-| `stages/s06a_candidates.py` | Language candidate generation |
+| `stages/s06_language.py` | Language output stage coordinator |
+| `stages/s06b_output.py` | Output routing and LLM/anchor fallback |
 | `stages/s06a_training_mode.py` | Training mode somatic help (extracted from s06a) |
 | `stages/s07a_state_update.py` | State write-back |
 | `stages/s07a_integrity_tick.py` | Integrity monitor tick (extracted from s07a) |
@@ -225,9 +225,15 @@ python -m src.daemon.daemon
 
 ## 3. entity_state - Central State Container
 
-**Responsibility**: Holds all of XIA's internal state: drives, emotions, memory snapshots, world model rules, and more.
+**Responsibility**: Holds XIA's internal state surface and singleton access. State lifecycle, JSON IO, persistence, and compatibility adapters are split into support modules.
 
-**Entry files**: `src/entity_state.py`
+**Entry files**:
+- `src/entity_state.py`
+- `src/entity_io.py`
+- `src/entity_lifecycle.py`
+- `src/entity_persistence.py`
+- `src/entity_core_wrapper.py`
+- `src/entity_experience.py`
 
 **Inputs**: All subsystems write to it
 
@@ -235,7 +241,10 @@ python -m src.daemon.daemon
 
 **Key dependencies**: All subsystems
 
-**Common change risks**: Adding a new state variable requires persistence schema migration
+**Common change risks**:
+- Adding a new state variable requires persistence schema migration in `entity_persistence.py`
+- Changing startup recovery order affects `get_entity_state()`
+- Removing re-exported helpers can break compatibility through `entity_zero_iteration.py`
 
 **Recommended checks**: `python tests/test_50_ticks.py`
 
@@ -263,6 +272,17 @@ joy, sadness, anger, fear, anxiety, surprise, disgust, serenity, excitement, cur
 ### Persistence
 
 `data/entity_core.json` (written every tick)
+
+### Support Modules
+
+| File | Function |
+| --- | --- |
+| `entity_state.py` | `EntityState` dataclass, runtime state methods, singleton API, compatibility re-exports |
+| `entity_io.py` | Data paths, JSON loading, backup/corrupt-file handling, atomic JSON writes |
+| `entity_lifecycle.py` | Episode recovery, offline drift, silence injection, wakeup message, stereotype tree setup |
+| `entity_persistence.py` | Full `persist_to_file` / `load_from_file` implementation and schema compatibility |
+| `entity_core_wrapper.py` | `_CoreWrapper` and `_make_core_wrapper` for behavior-emergence compatibility |
+| `entity_experience.py` | Prediction-error map and experience-log helpers |
 
 ---
 
@@ -1059,7 +1079,7 @@ Continuous signals, no if-else, caching prevents duplicate computation (TTL=60s)
 | `data/v_jepa_predictor.npz` | V-JEPA temporal predictor weights |
 | `data/integrity_snapshot.json` | Integrity monitoring snapshot |
 | `data/self_binding.json` | Self-binding strength data |
-| `logs/daemon_live.log` | Runtime log |
+| `logs/` | Runtime logs (ignored by Git) |
 
 ---
 
@@ -1074,7 +1094,7 @@ IPCServer._handle_chat(text)
     -> s02_perception: semantic perception + drives + somatic
     -> s02b_input_drive_map: BGE embedding -> drive centroid matching
     -> [interpretation_competition]: experience candidates competing
-    -> s02c_delayed_understand: delayed understanding
+    -> s02c_delayed_understanding: delayed understanding
     -> s03_think: emotion particles + thinking
     -> s04a_meta: meta-cognitive adjustment
     -> s04b_emerge: behavior emergence
@@ -1130,4 +1150,4 @@ When modifying these areas, **you must update** this index and the corresponding
 
 ---
 
-*Last updated: 2026-06-09*
+*Last updated: 2026-06-10*

@@ -1,149 +1,63 @@
 # XIA / AEE - Persistent Autonomous Agent Runtime
 
 XIA is a solo research engineering project for building a persistent autonomous
-agent runtime. Instead of treating an AI system as a single chat prompt, XIA is
-structured as a long-running process with internal state, memory, background
-ticks, language modules, and optional tool execution.
+agent runtime. Instead of treating an AI system as a single stateless chat
+prompt, XIA is structured as a long-running process with internal state,
+background ticks, memory, language modules, world-model updates, and optional
+tool execution.
 
-This repository is useful to review as an engineering portfolio project because
-it shows system design work across background runtime orchestration, state modeling,
-modularization, memory, language, tool execution, testing, and multi-agent
-development workflow.
+The repository is useful as an engineering portfolio project because it shows
+runtime orchestration, state modeling, modular refactoring, persistence,
+observability, testing, and multi-agent development workflow.
 
-## What I Built
+## What XIA Does
 
-- A Python background runtime that advances entity state over time and exposes IPC/HTTP endpoints.
-- A multi-stage cognitive pipeline for perception, thinking, language, state update, and persistence.
-- A continuous state model for variables such as fatigue, stress, curiosity, loneliness, boredom, and unresolved tension.
-- An autonomous action system that can decide to reach out, search, browse, write files, or call tools.
-- A language system that maps internal state into anchor words, sentence patterns, and expression feedback.
-- Episodic memory and world-model update modules that record experience and feed later behavior.
-- A multi-agent engineering workflow using `.agents/tasks/` packages for specs, plans, validation notes, and review handoff.
+- Runs a local daemon that advances entity state over time.
+- Exposes IPC/HTTP entry points for chat, status, and training requests.
+- Maintains persistent internal variables such as energy, fatigue, curiosity,
+  loneliness, boredom, stress, and unresolved tension.
+- Routes each tick through a staged cognitive pipeline: perception, thinking,
+  behavior emergence, language, state update, and persistence.
+- Uses language modules for anchor matching, sentence composition, source
+  identity, expression relief, and feedback loops.
+- Records episodic memory and updates a lightweight world model from observed
+  state changes.
+- Supports autonomous action plumbing through the action system and daemon
+  trigger loop.
+
+This is an active research prototype, not a production framework.
 
 ## Quick Review Guide
 
 If you only have a few minutes, start here:
 
-| What to inspect | Why it matters |
+| Area | Why inspect it |
 | --- | --- |
-| `src/daemon/tick_engine.py` | Main background tick orchestration, now split below the 400-line module limit |
-| `src/daemon/` | Background runtime helpers for input, status, action execution, maintenance, reading, source tracking, and HTTP/chat handling |
-| `src/action_system/` | Autonomous action execution, tool parsing, feedback, and failure handling |
-| `src/language_training.py` + `src/language_anchor_match.py` | Anchor-based language training and expression matching |
-| `src/language_system/narrative_fragments.py` + `narrative_context.py` | Narrative expression scoring and context construction |
-| `XIA_SYSTEMS.md` | System map used by agents to navigate the codebase |
-| `.agents/tasks/` | Evidence of scoped implementation plans, validation, and review workflow |
-
-## Technical Highlights
-
-### Background Runtime
-
-The runtime service is responsible for keeping XIA moving outside direct chat
-requests. It handles:
-
-- background ticks
-- IPC/HTTP request dispatch
-- chat/status/training endpoints
-- response cache prewarming
-- source identity tracking
-- autonomous action trigger wiring
-
-Relevant files:
-
-- `src/daemon/daemon.py`
-- `src/daemon/tick_engine.py`
-- `src/daemon/http_server.py`
-- `src/daemon/ipc_chat_handler.py`
-
-### State-Driven Behavior
-
-XIA tracks continuous internal values and uses them as inputs to downstream
-drive, decision, language, and action modules. The project contains dedicated
-systems for:
-
-- drive computation
-- state update
-- language expression
-- memory write-back
-- world-model induction
-- long-term parameter drift
-
-This is not presented as a production-ready cognitive model. It is a prototype
-showing how to structure an agent runtime around persistent state rather than a
-single stateless prompt.
-
-### Autonomous Actions
-
-`src/action_system/` contains the code path for self-initiated actions:
-
-- tool-call extraction
-- action parsing
-- voice/manifest writing
-- somatic feedback after tool use
-- failure analysis
-- capability-gap handling
-
-Recent cleanup split the old large executor into:
-
-- `executor.py`
-- `executor_prompts.py`
-- `executor_feedback.py`
-- `executor_failure_resolution.py`
-- `tools.py`
-- `tools_nl_extractors.py`
-
-### Language and Expression
-
-The language layer is not only an LLM wrapper. It includes modules for:
-
-- anchor matching
-- sentence composition
-- construction grammar
-- narrative fragments
-- expression relief
-- quenching / feedback
-- source and speaker modeling
-
-Relevant files:
-
-- `src/language_training.py`
-- `src/language_anchor_match.py`
-- `src/language_system/sentence_composer.py`
-- `src/language_system/narrative_fragments.py`
-- `src/language_system/expression_relief.py`
-
-### Memory and World Model
-
-The repository includes memory and world-model modules for recording and using
-experience:
-
-- episodic records
-- state snapshots
-- insight tracking
-- TetraMem adapter fallback
-- rule induction
-- contradiction and tension tracking
-
-Relevant files:
-
-- `src/memory_hub/`
-- `src/world_model_update/`
-- `src/daemon/periodic_maintenance.py`
+| `src/daemon/` | Long-running background process, IPC/HTTP server, tick loop, action execution |
+| `src/pipeline_runner/` | Staged cognitive pipeline and cross-stage context |
+| `src/entity_state.py` + `src/entity_*.py` | Persistent state model, lifecycle, persistence, compatibility wrappers |
+| `src/language_system/` | Anchor language, sentence composition, expression feedback, source modeling |
+| `src/action_system/` | Tool execution, action parsing, failure handling, feedback |
+| `src/memory_hub/` | Episodic memory, insights, TetraMem fallback/persistence |
+| `src/world_model_update/` | Rule induction, contradiction handling, decay/merge/verification |
+| `XIA_SYSTEMS.md` | Maintainer-facing system index and cross-module map |
+| `docs/PROJECT_STRUCTURE.md` | Current directory/module responsibility index |
+| `.agents/tasks/` | Task packages with specs, plans, validation notes, and review handoff |
 
 ## Architecture
 
 ```text
-IPC / optional desktop status UI
+IPC / HTTP / optional desktop status UI
         |
         v
-daemon.py
+src.daemon.daemon
         |
-        +--> tick_engine.py
+        +--> TickEngine
         |       |
-        |       +--> pipeline_runner
-        |       +--> runtime maintenance helpers
-        |       +--> action execution
-        |       +--> source tracking
+        |       +--> run_pipeline(...)
+        |       +--> lifecycle/maintenance helpers
+        |       +--> autonomous action execution
+        |       +--> source and causal observation
         |       +--> memory/world-model updates
         |
         +--> http_server.py
@@ -151,20 +65,27 @@ daemon.py
 
 pipeline_runner
         |
-        +--> perception
-        +--> thinking
-        +--> behavior emergence
-        +--> language
-        +--> state update
-        +--> persistence
+        +--> s01_init
+        +--> s02_perception / input-drive mapping / delayed understanding
+        +--> s03_think
+        +--> s04a_meta / s04b_emerge
+        +--> s05_behavior
+        +--> s06_language / candidates / anchor core
+        +--> s07_state update / persistence / language finalization
 ```
 
-## System Map
+## Current Module Map
 
 | Area | Purpose |
 | --- | --- |
 | `src/daemon/` | Background runtime process, ticks, IPC/HTTP, autonomous wiring |
 | `src/pipeline_runner/` | Cognitive pipeline orchestration |
+| `src/entity_state.py` | EntityState dataclass, runtime state methods, singleton API |
+| `src/entity_io.py` | Entity state paths and atomic JSON IO |
+| `src/entity_lifecycle.py` | Recovery, offline drift, silence injection, stereotype setup |
+| `src/entity_persistence.py` | `persist_to_file` / `load_from_file` implementation |
+| `src/entity_core_wrapper.py` | Compatibility wrapper for emergent behavior |
+| `src/entity_experience.py` | Experience-log and prediction-error helpers |
 | `src/drive_system/` | Drive computation and pressure signals |
 | `src/state_update/` | State transition and write-back |
 | `src/language_system/` | Anchor language, grammar, expression, source modeling |
@@ -172,43 +93,26 @@ pipeline_runner
 | `src/memory_hub/` | Episodic memory, insights, TetraMem integration |
 | `src/world_model_update/` | Rule induction, contradiction handling, decay |
 | `src/thinking_system/` | Internal reasoning, semantic base, covariance tracking |
-| `src/observability/` | Runtime instrumentation and reporting |
+| `src/observability/` | Runtime instrumentation, LLM wrappers, reporting |
 | `frontend/` | Optional Electron/Vite status display |
-| `.agents/tasks/` | Multi-agent task packages and validation notes |
 
 ## Engineering Work Demonstrated
 
-- Designed and maintained a background runtime with persistent state ticks.
-- Split oversized files into focused modules while preserving public behavior.
-- Added system documentation to support agent-assisted development.
-- Maintained task packages with specs, plans, validation, and review notes.
-- Used smoke tests, `py_compile`, targeted pytest runs, and diff checks during refactors.
-- Kept runtime data, logs, caches, model artifacts, and secrets out of code changes.
-
-## Validation Examples
-
-Common checks used during recent refactors:
-
-```powershell
-python -m pytest tests\test_source_identity.py tests\test_expression_relief.py -q
-git diff --check
-```
-
-For Python compilation in PowerShell, explicit file lists are safer than
-wildcards:
-
-```powershell
-$files = Get-ChildItem -Path .\src\daemon -Filter *.py | ForEach-Object { $_.FullName }
-python -m py_compile @files
-```
+- Designed a background runtime around persistent state ticks.
+- Preserved compatibility while splitting large files into focused modules.
+- Separated state definition from lifecycle, IO, persistence, and wrapper logic.
+- Maintained task packages with implementation specs, validation, and review notes.
+- Used targeted pytest runs, `compileall`, smoke scripts, and `git diff --check`
+  during refactors.
+- Kept runtime data, logs, caches, model artifacts, and secrets out of commits.
 
 ## Running Locally
 
 Requirements:
 
 - Python 3.12+
-- Node.js 18+ if using the optional desktop status UI
-- Optional LLM provider configuration via `.env`
+- Node.js 18+ for the optional desktop status UI
+- Optional LLM provider configuration through `.env`
 
 Background runtime:
 
@@ -226,16 +130,29 @@ npm install
 npm run electron:dev
 ```
 
-## Current Status
+## Validation Examples
 
-This is an active research prototype, not a polished product or production
-framework. The strongest parts of the repository are the runtime architecture,
-subsystem boundaries, and refactoring/validation workflow. Some older modules
-are still being split and cleaned up.
+```powershell
+python -m compileall -q src tests
+python -m pytest tests\test_expression_relief.py tests\test_source_identity.py tests\test_clarification_learning.py tests\test_clarification_memory_state.py
+python test_stage3.py
+git diff --check
+```
 
-Recent cleanup reduced several large files below the project 400-line module
-limit, including background runtime, action-system, narrative, and
-language-training files.
+## Repository Hygiene
+
+The repository intentionally ignores runtime state and local artifacts:
+
+- `data/`
+- `logs/`
+- `daemon*.log`
+- `__pycache__/`
+- `.pytest_cache/`
+- local assistant/IDE configuration directories
+
+Tracked root-level scripts such as `test_stage3.py`, `verify_fixes.py`, and
+`train_curriculum.py` are historical/manual validation utilities. They are not
+daemon entry points.
 
 ## Author
 
