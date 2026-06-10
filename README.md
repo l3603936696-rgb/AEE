@@ -2,7 +2,7 @@
 
 XIA is a solo research engineering project for building a persistent autonomous
 agent runtime. Instead of treating an AI system as a single stateless chat
-prompt, XIA is structured as a long-running process with internal state,
+prompt, XIA is structured as a long-running Python process with internal state,
 background ticks, memory, language modules, world-model updates, and optional
 tool execution.
 
@@ -27,6 +27,17 @@ observability, testing, and multi-agent development workflow.
 
 This is an active research prototype, not a production framework.
 
+## Current Interface Scope
+
+XIA currently ships as a backend/runtime project, not as a desktop or web app.
+
+- The daemon is started with `python -m src.daemon.daemon`.
+- Chat access is available through the local `channel/` IPC client.
+- Active reach-out messages are surfaced through `reach_client.py`.
+- There is no maintained frontend in the current codebase. Earlier Electron/Vite
+  experiments were removed and archived so the runtime can keep iterating without
+  carrying an inactive UI surface.
+
 ## Quick Review Guide
 
 If you only have a few minutes, start here:
@@ -37,17 +48,76 @@ If you only have a few minutes, start here:
 | `src/pipeline_runner/` | Staged cognitive pipeline and cross-stage context |
 | `src/entity_state.py` + `src/entity_*.py` | Persistent state model, lifecycle, persistence, compatibility wrappers |
 | `src/language_system/` | Anchor language, sentence composition, expression feedback, source modeling |
-| `src/action_system/` | Tool execution, action parsing, failure handling, feedback |
+| `src/action_system/` | Tool execution, action parsing, reach behavior, failure handling |
 | `src/memory_hub/` | Episodic memory, insights, TetraMem fallback/persistence |
 | `src/world_model_update/` | Rule induction, contradiction handling, decay/merge/verification |
 | `XIA_SYSTEMS.md` | Maintainer-facing system index and cross-module map |
-| `docs/PROJECT_STRUCTURE.md` | Current directory/module responsibility index |
 | `.agents/tasks/` | Task packages with specs, plans, validation notes, and review handoff |
+
+## Technical Highlights
+
+### Background Runtime
+
+The daemon keeps XIA moving outside direct chat requests. It handles background
+ticks, IPC/HTTP request dispatch, chat/status/training endpoints, response cache
+prewarming, source identity tracking, and autonomous action trigger wiring.
+
+Relevant files:
+
+- `src/daemon/daemon.py`
+- `src/daemon/tick_engine.py`
+- `src/daemon/http_server.py`
+- `src/daemon/ipc_chat_handler.py`
+
+### State-Driven Behavior
+
+XIA tracks continuous internal values and uses them as inputs to downstream
+drive, decision, language, and action modules. The project contains dedicated
+systems for drive computation, state update, language expression, memory
+write-back, world-model induction, and long-term parameter drift.
+
+This is a prototype showing how to structure an agent runtime around persistent
+state rather than a single stateless prompt.
+
+### Autonomous Actions
+
+`src/action_system/` contains the code path for self-initiated actions:
+
+- tool-call extraction
+- action parsing
+- active reach-out messages
+- voice/manifest writing
+- somatic feedback after tool use
+- failure analysis
+- capability-gap handling
+
+### Active Reach-Out Path
+
+XIA has an experimental path for initiating contact instead of only replying
+when the user sends a message. When the action system chooses a `reach` action,
+`src/action_system/reach.py` writes the message into runtime-generated files:
+
+- `data/xia_messages/pending.json`
+- `data/xia_messages/notification_queue.jsonl`
+- `data/xia_messages/history/`
+
+The response path is file-based. The local listener writes the user's reply to
+`data/xia_messages/response.json`, and the background runtime reads that reply
+on a later tick through `src/daemon/tick_input.py`.
+
+Relevant files:
+
+- `src/action_system/reach.py`
+- `reach_client.py`
+
+Current limitation: this is a working local message path, not a polished push
+notification system. If `reach_client.py` is not running, the message is still
+written to disk but may not be visible to the user.
 
 ## Architecture
 
 ```text
-IPC / HTTP / optional desktop status UI
+IPC / local HTTP clients
         |
         v
 src.daemon.daemon
@@ -94,7 +164,7 @@ pipeline_runner
 | `src/world_model_update/` | Rule induction, contradiction handling, decay |
 | `src/thinking_system/` | Internal reasoning, semantic base, covariance tracking |
 | `src/observability/` | Runtime instrumentation, LLM wrappers, reporting |
-| `frontend/` | Optional Electron/Vite status display |
+| `.agents/tasks/` | Multi-agent task packages and validation notes |
 
 ## Engineering Work Demonstrated
 
@@ -111,7 +181,6 @@ pipeline_runner
 Requirements:
 
 - Python 3.12+
-- Node.js 18+ for the optional desktop status UI
 - Optional LLM provider configuration through `.env`
 
 Background runtime:
@@ -122,13 +191,19 @@ copy .env.example .env
 python -m src.daemon.daemon
 ```
 
-Optional desktop status UI:
+Chat client:
 
 ```powershell
-cd frontend
-npm install
-npm run electron:dev
+python -m channel
 ```
+
+Optional active reach-out listener:
+
+```powershell
+python reach_client.py
+```
+
+There is currently no maintained frontend in this repository.
 
 ## Validation Examples
 
@@ -153,6 +228,21 @@ The repository intentionally ignores runtime state and local artifacts:
 Tracked root-level scripts such as `test_stage3.py`, `verify_fixes.py`, and
 `train_curriculum.py` are historical/manual validation utilities. They are not
 daemon entry points.
+
+## Current Status
+
+This is an active research prototype. The strongest parts of the repository are
+the runtime architecture, subsystem boundaries, and refactoring/validation
+workflow.
+
+The active reach-out feature is implemented as a local file-backed loop. It can
+record and surface messages, but the user experience still depends on running a
+listener. A stronger version would make active messages appear directly in the
+chat surface or as reliable desktop notifications.
+
+Recent cleanup reduced several large files below the project 400-line module
+limit, including background runtime, action-system, narrative, and
+language-training files.
 
 ## Author
 

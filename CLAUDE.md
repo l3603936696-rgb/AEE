@@ -30,8 +30,8 @@ python tests/test_fixes.py           # regression tests
 # Chat via IPC (daemon must be running)
 python -m channel
 
-# Frontend
-cd frontend && npm install && npm run build && npm run electron
+# Optional active reach-out listener
+python reach_client.py
 ```
 
 ## Architecture

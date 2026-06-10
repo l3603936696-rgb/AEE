@@ -37,7 +37,7 @@ Use this section to quickly find which files to inspect when working on a specif
 | World model learning | `src/world_model_update/` |
 | Tool synthesis or introspection | `src/tool_synthesizer/`, `src/tool_introspection/` |
 | Action execution (V7) | `src/action_system/` |
-| Frontend / status display | `frontend/src/`, `src/daemon/protocol.py` |
+| Local daemon API / chat clients | `src/daemon/protocol.py`, `src/daemon/http_server.py`, `channel/`, `reach_client.py` |
 | Reviewing risky changes | `src/core/drive_vector_field.py`, `src/core/emergent_behavior.py` |
 
 ---

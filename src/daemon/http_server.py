@@ -1,4 +1,4 @@
-"""HTTP API server for daemon frontend access."""
+"""HTTP API server for local daemon clients."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ HTTP_STOP_JOIN_TIMEOUT_S = 1.0
 
 class HTTPServer:
     """
-    HTTP API 服务器，供 Windows 上的 Electron 前端访问。
+    HTTP API server for local clients.
 
     监听 127.0.0.1:8765，将 HTTP 请求转发到 IPCServer 处理。
     """

@@ -48,7 +48,8 @@ Do not treat `data/`, `logs/`, `daemon*.log`, or `__pycache__/` as source.
 | `src/jepa/` | I-JEPA/V-JEPA style prediction helpers |
 | `src/tool_introspection/` | Capability-gap and tool registry inspection |
 | `src/tool_synthesizer/` | Tool template/LLM synthesis helpers |
-| `frontend/` | Optional Electron/Vite status UI |
+| `channel/` | Local IPC chat client for the daemon |
+| `reach_client.py` | Local listener for active reach-out messages |
 
 ## Important Compatibility Paths
 
